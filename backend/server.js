@@ -3,100 +3,52 @@ require('dotenv').config();
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { performance } = require('perf_hooks');
 
 const { sendSwaggerJson, sendSwaggerUi } = require('./swagger');
 const { loginAdmin, requireAdmin } = require('./auth');
-
-let supabase = null;
-
-try {
-  supabase = require('./supabase').supabase;
-} catch (error) {
-  console.warn('Supabase não configurado. O projeto continuará usando db.json.');
-}
+const { prisma } = require('./prisma');
 
 const PORT = process.env.PORT || 3000;
 const ROOT = path.join(__dirname, '..');
 const PAINEL_DIR = path.join(ROOT, 'painel');
-const DB_PATH = path.join(__dirname, 'db.json');
 
-function readDb() {
-  const db = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+let atividadeCache = null;
+let atividadeCacheAt = 0;
+const ATIVIDADE_CACHE_MS = 5000;
 
-  if (!db.frases) db.frases = [];
-  if (!db.equipes) db.equipes = [];
-  if (!db.leituras) db.leituras = [];
-  if (!db.pontuacoes) db.pontuacoes = [];
+// Usado para deixar a leitura do QR instantânea no painel.
+// O Supabase continua sendo o banco oficial, mas o painel não precisa esperar o banco
+// a cada leitura do QR.
+let ultimoQrLido = null;
+const escritasPendentes = new Set();
 
-  if (!db.nextFraseId) db.nextFraseId = 1;
-  if (!db.nextEquipeId) db.nextEquipeId = 1;
-  if (!db.nextLeituraId) db.nextLeituraId = 1;
-  if (!db.nextPontuacaoId) db.nextPontuacaoId = 1;
-
-  if (db.latest === undefined) db.latest = null;
-
-  return db;
+function aguardarEscritasPendentes() {
+  if (escritasPendentes.size === 0) return Promise.resolve();
+  return Promise.allSettled([...escritasPendentes]);
 }
 
-function writeDb(db) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+function salvarEmSegundoPlano(promise) {
+  escritasPendentes.add(promise);
+  promise
+    .catch(error => {
+      console.error('Erro ao salvar leitura no Supabase:', error);
+    })
+    .finally(() => {
+      escritasPendentes.delete(promise);
+    });
 }
 
-function criarDbVazio() {
-  return {
-    nextFraseId: 1,
-    nextEquipeId: 1,
-    nextLeituraId: 1,
-    nextPontuacaoId: 1,
-    frases: [],
-    equipes: [],
-    leituras: [],
-    pontuacoes: [],
-    latest: null
-  };
+function invalidateCache() {
+  atividadeCache = null;
+  atividadeCacheAt = 0;
+  ultimoQrLido = null;
 }
 
-function resetarJsonLocal() {
-  const dbVazio = criarDbVazio();
-  writeDb(dbVazio);
-  return dbVazio;
-}
-
-async function resetarSupabase() {
-  if (!supabase) {
-    return {
-      ok: false,
-      mensagem: 'Supabase não está configurado no backend.'
-    };
-  }
-
-  const tabelas = [
-    'leituras',
-    'pontuacoes',
-    'frases',
-    'equipes',
-    'atividades'
-  ];
-
-  for (const tabela of tabelas) {
-    const { error } = await supabase
-      .from(tabela)
-      .delete()
-      .not('id', 'is', null);
-
-    if (error) {
-      throw new Error(`Erro ao limpar tabela ${tabela}: ${error.message}`);
-    }
-  }
-
-  return {
-    ok: true,
-    mensagem: 'Dados do Supabase apagados com sucesso.'
-  };
-}
-
-function sendJson(res, status, data) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+function sendJson(res, status, data, startedAt = null) {
+  const headers = { 'Content-Type': 'application/json; charset=utf-8' };
+  if (startedAt) headers['Server-Timing'] = `app;dur=${Math.round(performance.now() - startedAt)}`;
+  res.writeHead(status, headers);
   res.end(JSON.stringify(data));
 }
 
@@ -116,241 +68,206 @@ function parseBody(req) {
 }
 
 function splitTextoEmBlocos(texto) {
-  // Para a demonstração: se usar |, cada trecho vira um bloco/frase.
-  // Sem |, cada palavra vira um bloco.
   const separador = texto.includes('|') ? 'pipe' : 'palavra';
-  const blocos = separador === 'pipe'
+  return separador === 'pipe'
     ? texto.split('|').map(item => item.trim()).filter(Boolean)
     : texto.trim().split(/\s+/).filter(Boolean);
-
-  return blocos;
-}
-
-function normalizarTexto(texto) {
-  return String(texto || '').trim().toLowerCase();
 }
 
 function normalizarNomeEquipe(nomeEquipe) {
   const valor = String(nomeEquipe || '').trim();
-
-  if (!valor) {
-    return null;
-  }
-
-  // Se a pessoa digitar só "2", transforma em "Equipe 2"
-  if (/^\d+$/.test(valor)) {
-    return `Equipe ${valor}`;
-  }
-
-  // Se a pessoa digitar "equipe2", "Equipe 2", "EQUIPE 2", padroniza
+  if (!valor) return null;
+  if (/^\d+$/.test(valor)) return `Equipe ${valor}`;
   const matchEquipeNumero = valor.match(/^equipe\s*(\d+)$/i);
-
-  if (matchEquipeNumero) {
-    return `Equipe ${matchEquipeNumero[1]}`;
-  }
-
+  if (matchEquipeNumero) return `Equipe ${matchEquipeNumero[1]}`;
   return valor;
 }
 
 function validarNomeEquipe(nomeEquipe) {
   const nome = normalizarNomeEquipe(nomeEquipe);
-
   if (!nome) {
-    return {
-      valido: false,
-      error: 'Informe o número ou nome da equipe. Ex: Equipe 1 ou apenas 1.'
-    };
+    return { valido: false, error: 'Informe o número ou nome da equipe. Ex: Equipe 1 ou apenas 1.' };
   }
-
-  // Bloqueia equipe sem número
   if (/^equipe$/i.test(nome)) {
-    return {
-      valido: false,
-      error: 'Informe o número da equipe. Ex: Equipe 1, Equipe 2 ou apenas 2.'
-    };
+    return { valido: false, error: 'Informe o número da equipe. Ex: Equipe 1, Equipe 2 ou apenas 2.' };
   }
+  return { valido: true, nome };
+}
 
+async function getAtividadeAtivaCached() {
+  const agora = Date.now();
+  if (atividadeCache && agora - atividadeCacheAt < ATIVIDADE_CACHE_MS) return atividadeCache;
+
+  atividadeCache = await prisma.atividade.findFirst({
+    where: { ativa: true },
+    orderBy: { createdAt: 'desc' },
+    include: { frases: { orderBy: { indice: 'asc' } } }
+  });
+  atividadeCacheAt = agora;
+  return atividadeCache;
+}
+
+async function getAtividadeAtivaId() {
+  const atividade = await getAtividadeAtivaCached();
+  return atividade ? atividade.id : null;
+}
+
+async function getOrCreateEquipe(nomeEquipe) {
+  const validacao = validarNomeEquipe(nomeEquipe);
+  if (!validacao.valido) throw new Error(validacao.error);
+
+  const equipeExistente = await prisma.equipe.findFirst({
+    where: { nome: { equals: validacao.nome, mode: 'insensitive' } }
+  });
+
+  if (equipeExistente) return equipeExistente;
+  return prisma.equipe.create({ data: { nome: validacao.nome } });
+}
+
+async function findEquipeByNome(nomeEquipe) {
+  const validacao = validarNomeEquipe(nomeEquipe);
+  if (!validacao.valido) return null;
+
+  return prisma.equipe.findFirst({
+    where: { nome: { equals: validacao.nome, mode: 'insensitive' } }
+  });
+}
+
+function toFraseApi(frase) {
   return {
-    valido: true,
-    nome
+    id: frase.id,
+    indice: frase.indice,
+    codigoBinario: frase.codigoBinario,
+    texto: frase.texto,
+    createdAt: frase.createdAt
   };
 }
 
-function getOrCreateEquipe(db, nomeEquipe) {
-  const validacao = validarNomeEquipe(nomeEquipe);
+function toLeituraApi(leitura) {
+  return {
+    id: leitura.id,
+    equipeId: leitura.equipeId,
+    equipe: leitura.equipe?.nome,
+    fraseId: leitura.fraseId,
+    index: leitura.frase?.indice ?? leitura.ordem,
+    ordem: leitura.ordem,
+    codigoBinario: leitura.codigoBinario,
+    fragment: leitura.fragmento,
+    fragmento: leitura.fragmento,
+    createdAt: leitura.createdAt
+  };
+}
 
-  if (!validacao.valido) {
-    throw new Error(validacao.error);
-  }
-
-  const nome = validacao.nome;
-
-  let equipe = db.equipes.find(item => {
-    return item.nome.toLowerCase() === nome.toLowerCase();
+async function getLeiturasEquipe(atividadeId, equipeId) {
+  return prisma.leitura.findMany({
+    where: { atividadeId, equipeId },
+    include: { equipe: true, frase: true },
+    orderBy: { id: 'asc' }
   });
-
-  if (!equipe) {
-    equipe = {
-      id: db.nextEquipeId++,
-      nome,
-      createdAt: new Date().toISOString()
-    };
-
-    db.equipes.push(equipe);
-  }
-
-  return equipe;
 }
 
-function findEquipeByNome(db, nomeEquipe) {
-  const validacao = validarNomeEquipe(nomeEquipe);
-
-  if (!validacao.valido) {
-    return null;
-  }
-
-  const nome = validacao.nome;
-
-  return db.equipes.find(item => {
-    return item.nome.toLowerCase() === nome.toLowerCase();
-  }) || null;
-}
-
-function findEquipeByNome(db, nomeEquipe) {
-  const validacao = validarNomeEquipe(nomeEquipe);
-
-  if (!validacao.valido) {
-    return null;
-  }
-
-  const nome = validacao.nome;
-
-  return db.equipes.find(item => {
-    return item.nome.toLowerCase() === nome.toLowerCase();
-  }) || null;
-}
-
-function codigoParaIndice(body) {
-  if (body.indice !== undefined && body.indice !== null && body.indice !== '') {
-    const indice = Number(body.indice);
-    if (!Number.isInteger(indice) || indice < 1) {
-      throw new Error('O índice precisa ser um número inteiro maior ou igual a 1.');
-    }
-    return indice;
-  }
-
-  const codigo = String(body.codigoBinario || body.codigo || '').trim();
-  if (!/^[01]+$/.test(codigo)) {
-    throw new Error('Envie codigoBinario no formato binário, exemplo: 0000, 0001, 0010.');
-  }
-
-  // Convenção do MVP: 0000 = bloco 1, 0001 = bloco 2, 0010 = bloco 3...
-  return parseInt(codigo, 2) + 1;
-}
-
-function avaliarEquipe(db, equipeId) {
-  const frasesOrdenadas = db.frases
-    .slice()
-    .sort((a, b) => a.indice - b.indice);
-
-  const leiturasEquipe = db.leituras
-    .filter(item => item.equipeId === equipeId)
-    .sort((a, b) => a.id - b.id);
-
+function avaliarComDados(frasesOrdenadas, leiturasEquipe) {
   let corretas = 0;
 
   for (let i = 0; i < frasesOrdenadas.length; i++) {
     const fraseEsperada = frasesOrdenadas[i];
     const leituraRecebida = leiturasEquipe[i];
-
     if (!leituraRecebida) continue;
-
-    if (leituraRecebida.index === fraseEsperada.indice) {
-      corretas++;
-    }
+    if (leituraRecebida.frase?.indice === fraseEsperada.indice) corretas++;
   }
 
   const indicesEsperados = frasesOrdenadas.map(item => item.indice);
-  const indicesLidos = leiturasEquipe.map(item => item.index);
+  const indicesLidos = leiturasEquipe.map(item => item.frase?.indice).filter(Boolean);
 
-  const blocosEncontrados = indicesLidos.filter(index => {
-    return indicesEsperados.includes(index);
-  }).length;
-
+  const blocosEncontrados = indicesLidos.filter(index => indicesEsperados.includes(index)).length;
   const total = frasesOrdenadas.length;
   const lidas = leiturasEquipe.length;
   const faltando = Math.max(total - blocosEncontrados, 0);
   const pontuacao = corretas * 10;
 
-  return {
-    corretas,
-    blocosEncontrados,
-    total,
-    lidas,
-    faltando,
-    pontuacao
-  };
-}
-function criarAssinaturaLeituras(db, equipeId) {
-  const leiturasEquipe = db.leituras
-    .filter(item => item.equipeId === equipeId)
-    .sort((a, b) => a.id - b.id);
-
-  if (leiturasEquipe.length === 0) {
-    return null;
-  }
-
-  return leiturasEquipe
-    .map(item => item.codigoBinario)
-    .join('|');
+  return { corretas, blocosEncontrados, total, lidas, faltando, pontuacao };
 }
 
-function salvarPontuacaoEquipe(db, equipeId, avaliacao) {
-  const assinaturaAtual = criarAssinaturaLeituras(db, equipeId);
+async function avaliarEquipe(atividade, equipeId) {
+  const leiturasEquipe = await getLeiturasEquipe(atividade.id, equipeId);
+  return avaliarComDados(atividade.frases, leiturasEquipe);
+}
+
+function criarAssinaturaLeiturasDeLista(leiturasEquipe) {
+  if (!leiturasEquipe || leiturasEquipe.length === 0) return null;
+  return leiturasEquipe.map(item => item.codigoBinario).join('|');
+}
+
+async function salvarPontuacaoEquipe(atividade, equipeId, avaliacao, leiturasEquipe) {
+  const assinaturaAtual = criarAssinaturaLeiturasDeLista(leiturasEquipe);
 
   if (!assinaturaAtual) {
-    return {
-      pontuacao: 0,
-      jaValidouEssaMesmaSequencia: false
-    };
+    return { pontuacao: 0, jaValidouEssaMesmaSequencia: false };
   }
 
-  let pontuacao = db.pontuacoes.find(item => item.equipeId === equipeId);
+  let pontuacao = await prisma.pontuacao.findUnique({
+    where: { atividadeId_equipeId: { atividadeId: atividade.id, equipeId } }
+  });
 
   if (!pontuacao) {
-    pontuacao = {
-      id: db.nextPontuacaoId++,
-      equipeId,
-      pontuacao: 0,
-      corretas: 0,
-      total: avaliacao.total,
-      ultimaPontuacaoRodada: 0,
-      ultimaAssinatura: '',
-      updatedAt: new Date().toISOString()
-    };
-
-    db.pontuacoes.push(pontuacao);
+    pontuacao = await prisma.pontuacao.create({
+      data: {
+        atividadeId: atividade.id,
+        equipeId,
+        pontuacao: 0,
+        corretas: 0,
+        total: avaliacao.total,
+        ultimaPontuacaoRodada: 0,
+        ultimaAssinatura: ''
+      }
+    });
   }
 
   const jaValidouEssaMesmaSequencia = pontuacao.ultimaAssinatura === assinaturaAtual;
 
   if (!jaValidouEssaMesmaSequencia) {
-    pontuacao.pontuacao += avaliacao.pontuacao;
-    pontuacao.ultimaPontuacaoRodada = avaliacao.pontuacao;
-    pontuacao.corretas = avaliacao.corretas;
-    pontuacao.total = avaliacao.total;
-    pontuacao.ultimaAssinatura = assinaturaAtual;
-    pontuacao.updatedAt = new Date().toISOString();
+    pontuacao = await prisma.pontuacao.update({
+      where: { id: pontuacao.id },
+      data: {
+        pontuacao: pontuacao.pontuacao + avaliacao.pontuacao,
+        ultimaPontuacaoRodada: avaliacao.pontuacao,
+        corretas: avaliacao.corretas,
+        total: avaliacao.total,
+        ultimaAssinatura: assinaturaAtual
+      }
+    });
   }
 
-  return {
-    ...pontuacao,
-    jaValidouEssaMesmaSequencia
-  };
+  return { ...pontuacao, jaValidouEssaMesmaSequencia };
 }
 
-function getPontuacaoSalva(db, equipeId) {
-  return db.pontuacoes.find(item => item.equipeId === equipeId) || null;
+
+async function registrarLeituraNoBanco({ atividade, nomeEquipe, frase }) {
+  const equipe = await getOrCreateEquipe(nomeEquipe);
+  const ordem = await prisma.leitura.count({ where: { atividadeId: atividade.id, equipeId: equipe.id } });
+
+  return prisma.leitura.create({
+    data: {
+      atividadeId: atividade.id,
+      equipeId: equipe.id,
+      fraseId: frase.id,
+      ordem: ordem + 1,
+      codigoBinario: frase.codigoBinario,
+      fragmento: frase.texto
+    },
+    include: { equipe: true, frase: true }
+  });
+}
+
+async function resetarSupabase() {
+  await prisma.leitura.deleteMany();
+  await prisma.pontuacao.deleteMany();
+  await prisma.frase.deleteMany();
+  await prisma.equipe.deleteMany();
+  await prisma.atividade.deleteMany();
+  invalidateCache();
+
+  return { ok: true, mensagem: 'Dados do Supabase apagados com sucesso.' };
 }
 
 function getContentType(filePath) {
@@ -363,7 +280,8 @@ function getContentType(filePath) {
     '.png': 'image/png',
     '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',
-    '.svg': 'image/svg+xml'
+    '.svg': 'image/svg+xml',
+    '.woff2': 'font/woff2'
   };
   return types[ext] || 'application/octet-stream';
 }
@@ -387,159 +305,129 @@ function serveStatic(req, res) {
 }
 
 const server = http.createServer(async (req, res) => {
+  const startedAt = performance.now();
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   try {
     if (url.pathname === '/api/ping' && req.method === 'GET') {
-      return sendJson(res, 200, { ok: true, mensagem: 'API do Robô Literário online' });
+      return sendJson(res, 200, { ok: true, mensagem: 'API do Robô Literário online' }, startedAt);
     }
 
     if (url.pathname === '/api/atividade' && req.method === 'GET') {
-      const db = readDb();
+      const atividade = await getAtividadeAtivaCached();
       return sendJson(res, 200, {
-        frases: [...db.frases].sort((a, b) => a.indice - b.indice),
-        total: db.frases.length
-      });
+        frases: atividade ? atividade.frases.map(toFraseApi) : [],
+        total: atividade ? atividade.frases.length : 0
+      }, startedAt);
     }
 
     if (url.pathname === '/api/atividade' && req.method === 'POST') {
       const body = await parseBody(req);
       const textoAlvo = String(body.textoAlvo || body.texto || '').trim();
 
-      if (!textoAlvo) {
-        return sendJson(res, 400, { error: 'Envie textoAlvo para iniciar a atividade.' });
-      }
+      if (!textoAlvo) return sendJson(res, 400, { error: 'Envie textoAlvo para iniciar a atividade.' }, startedAt);
 
       const blocos = splitTextoEmBlocos(textoAlvo);
-      if (blocos.length === 0) {
-        return sendJson(res, 400, { error: 'A atividade precisa ter pelo menos um bloco.' });
-      }
+      if (blocos.length === 0) return sendJson(res, 400, { error: 'A atividade precisa ter pelo menos um bloco.' }, startedAt);
 
-      const db = readDb();
-      db.frases = blocos.map((texto, index) => ({
-        id: db.nextFraseId++,
-        indice: index + 1,
-        codigoBinario: index.toString(2).padStart(4, '0'),
-        texto
-      }));
-      db.leituras = [];
-      db.latest = null;
-      writeDb(db);
+      const atividade = await prisma.$transaction(async tx => {
+        await tx.atividade.updateMany({ where: { ativa: true }, data: { ativa: false } });
 
+        return tx.atividade.create({
+          data: {
+            textoAlvo,
+            ativa: true,
+            frases: {
+              create: blocos.map((texto, index) => ({
+                indice: index + 1,
+                codigoBinario: index.toString(2).padStart(4, '0'),
+                texto
+              }))
+            }
+          },
+          include: { frases: { orderBy: { indice: 'asc' } } }
+        });
+      });
+
+      invalidateCache();
       return sendJson(res, 201, {
         mensagem: 'Atividade iniciada com sucesso.',
-        frases: db.frases
-      });
+        atividadeId: atividade.id,
+        frases: atividade.frases.map(toFraseApi)
+      }, startedAt);
     }
 
     if (url.pathname === '/api/qr/latest' && req.method === 'GET') {
-      const db = readDb();
-      return sendJson(res, 200, db.latest || null);
+      return sendJson(res, 200, ultimoQrLido, startedAt);
     }
 
     if (url.pathname === '/api/qr' && req.method === 'POST') {
       const body = await parseBody(req);
-      const db = readDb();
+      const atividade = await getAtividadeAtivaCached();
 
-      if (db.frases.length === 0) {
-        return sendJson(res, 400, {
-          error: 'Nenhuma atividade foi iniciada ainda.'
-        });
-      }
+      if (!atividade) return sendJson(res, 400, { error: 'Nenhuma atividade foi iniciada ainda.' }, startedAt);
 
-      let equipe;
-
-      try {
-        equipe = getOrCreateEquipe(db, body.equipe || body.nomeEquipe);
-      } catch (error) {
-        return sendJson(res, 400, {
-          error: error.message
-        });
+      const validacaoEquipe = validarNomeEquipe(body.equipe || body.nomeEquipe);
+      if (!validacaoEquipe.valido) {
+        return sendJson(res, 400, { error: validacaoEquipe.error }, startedAt);
       }
 
       const codigoBinario = String(body.codigoBinario || '').trim();
-
       if (!/^[01]+$/.test(codigoBinario)) {
-        return sendJson(res, 400, {
-          error: 'Código binário inválido. Use apenas 0 e 1. Ex: 0000, 0001, 0010.'
-        });
+        return sendJson(res, 400, { error: 'Código binário inválido. Use apenas 0 e 1. Ex: 0000, 0001, 0010.' }, startedAt);
       }
 
-      const index = parseInt(codigoBinario, 2) + 1;
+      const indice = parseInt(codigoBinario, 2) + 1;
+      const frase = atividade.frases.find(item => item.codigoBinario === codigoBinario || item.indice === indice);
 
-      const frase = db.frases.find(item => {
-        return item.codigoBinario === codigoBinario || item.indice === index;
-      });
+      if (!frase) return sendJson(res, 404, { error: `Nenhum bloco encontrado para o código ${codigoBinario}.` }, startedAt);
 
-      if (!frase) {
-        return sendJson(res, 404, {
-          error: `Nenhum bloco encontrado para o código ${codigoBinario}.`
-        });
-      }
-
-      const leitura = {
-        id: db.nextLeituraId++,
-        equipeId: equipe.id,
-        equipe: equipe.nome,
+      const leituraApi = {
+        id: `mem-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        equipeId: null,
+        equipe: validacaoEquipe.nome,
         fraseId: frase.id,
         index: frase.indice,
+        ordem: null,
         codigoBinario: frase.codigoBinario,
         fragment: frase.texto,
         fragmento: frase.texto,
         createdAt: new Date().toISOString()
       };
 
-      db.leituras.push(leitura);
+      ultimoQrLido = leituraApi;
 
-      const avaliacao = avaliarEquipe(db, equipe.id);
-
-      db.latest = {
-        ...leitura,
-        pontuacao: avaliacao.pontuacao
-      };
-
-      writeDb(db);
+      salvarEmSegundoPlano(
+        registrarLeituraNoBanco({ atividade, nomeEquipe: validacaoEquipe.nome, frase })
+      );
 
       return sendJson(res, 200, {
         mensagem: 'Leitura registrada com sucesso.',
-        ...leitura,
-        avaliacao,
-        pontuacao: avaliacao.pontuacao
-      });
+        ...leituraApi,
+        leitura: leituraApi
+      }, startedAt);
     }
 
     if (url.pathname === '/api/validar' && req.method === 'POST') {
       const body = await parseBody(req);
-      const db = readDb();
+      const atividade = await getAtividadeAtivaCached();
 
-      if (!db.frases || db.frases.length === 0) {
-        return sendJson(res, 400, {
-          error: 'Nenhuma atividade foi iniciada ainda. Inicie uma frase antes de verificar a resposta.'
-        });
+      if (!atividade) {
+        return sendJson(res, 400, { error: 'Nenhuma atividade foi iniciada ainda. Inicie uma frase antes de verificar a resposta.' }, startedAt);
       }
 
-      const nomeEquipe = body.equipe || body.nomeEquipe;
-      const equipe = findEquipeByNome(db, nomeEquipe);
+      await aguardarEscritasPendentes();
 
-      if (!equipe) {
-        return sendJson(res, 400, {
-          error: 'Essa equipe ainda não existe. Envie uma leitura primeiro antes de verificar.'
-        });
-      }
+      const equipe = await findEquipeByNome(body.equipe || body.nomeEquipe);
+      if (!equipe) return sendJson(res, 400, { error: 'Essa equipe ainda não existe. Envie uma leitura primeiro antes de verificar.' }, startedAt);
 
-      const leiturasEquipe = db.leituras.filter(item => item.equipeId === equipe.id);
-
+      const leiturasEquipe = await getLeiturasEquipe(atividade.id, equipe.id);
       if (leiturasEquipe.length === 0) {
-        return sendJson(res, 400, {
-          error: `A ${equipe.nome} ainda não enviou nenhum bloco. Envie pelo menos uma leitura antes de verificar.`
-        });
+        return sendJson(res, 400, { error: `A ${equipe.nome} ainda não enviou nenhum bloco. Envie pelo menos uma leitura antes de verificar.` }, startedAt);
       }
 
-      const avaliacao = avaliarEquipe(db, equipe.id);
-
-      const pontuacaoSalva = salvarPontuacaoEquipe(db, equipe.id, avaliacao);
-
-      writeDb(db);
+      const avaliacao = avaliarComDados(atividade.frases, leiturasEquipe);
+      const pontuacaoSalva = await salvarPontuacaoEquipe(atividade, equipe.id, avaliacao, leiturasEquipe);
 
       return sendJson(res, 200, {
         equipe: equipe.nome,
@@ -547,34 +435,46 @@ const server = http.createServer(async (req, res) => {
         pontuacaoRodada: avaliacao.pontuacao,
         pontuacao: pontuacaoSalva.pontuacao,
         jaValidouEssaMesmaSequencia: pontuacaoSalva.jaValidouEssaMesmaSequencia
-      });
+      }, startedAt);
     }
 
     if (url.pathname === '/api/placar' && req.method === 'GET') {
-      const db = readDb();
+      const atividade = await getAtividadeAtivaCached();
+      if (!atividade) return sendJson(res, 200, { placar: [] }, startedAt);
 
-      const placar = db.equipes.map(equipe => {
-        const avaliacaoAtual = avaliarEquipe(db, equipe.id);
-        const pontuacaoSalva = getPontuacaoSalva(db, equipe.id);
+      const pontuacoes = await prisma.pontuacao.findMany({
+        where: { atividadeId: atividade.id },
+        include: { equipe: true },
+        orderBy: [{ pontuacao: 'desc' }, { updatedAt: 'asc' }]
+      });
 
-        return {
-          equipe: equipe.nome,
-          ...avaliacaoAtual,
-          pontuacao: pontuacaoSalva ? pontuacaoSalva.pontuacao : avaliacaoAtual.pontuacao,
-          corretas: pontuacaoSalva ? pontuacaoSalva.corretas : avaliacaoAtual.corretas,
-          total: pontuacaoSalva ? pontuacaoSalva.total : avaliacaoAtual.total
-        };
-      }).sort((a, b) => b.pontuacao - a.pontuacao);
+      const placar = pontuacoes.map(item => ({
+        equipe: item.equipe.nome,
+        corretas: item.corretas,
+        blocosEncontrados: item.corretas,
+        total: item.total,
+        lidas: item.total,
+        faltando: Math.max(item.total - item.corretas, 0),
+        pontuacao: item.pontuacao
+      }));
 
-      return sendJson(res, 200, { placar });
+      return sendJson(res, 200, { placar }, startedAt);
     }
 
     if (url.pathname === '/api/leituras' && req.method === 'GET') {
-      const db = readDb();
-
+      const atividade = await getAtividadeAtivaCached();
       const nomeEquipe = String(url.searchParams.get('equipe') || 'Equipe 1').trim();
-      const equipe = findEquipeByNome(db, nomeEquipe);
 
+      if (!atividade) {
+        return sendJson(res, 200, {
+          equipe: normalizarNomeEquipe(nomeEquipe) || nomeEquipe,
+          leituras: [],
+          avaliacao: { corretas: 0, blocosEncontrados: 0, total: 0, lidas: 0, faltando: 0, pontuacao: 0 },
+          pontuacao: 0
+        }, startedAt);
+      }
+
+      const equipe = await findEquipeByNome(nomeEquipe);
       if (!equipe) {
         return sendJson(res, 200, {
           equipe: normalizarNomeEquipe(nomeEquipe) || nomeEquipe,
@@ -582,167 +482,104 @@ const server = http.createServer(async (req, res) => {
           avaliacao: {
             corretas: 0,
             blocosEncontrados: 0,
-            total: db.frases.length,
+            total: atividade.frases.length,
             lidas: 0,
-            faltando: db.frases.length,
+            faltando: atividade.frases.length,
             pontuacao: 0
           },
           pontuacao: 0
-        });
+        }, startedAt);
       }
 
-      const leituras = db.leituras
-        .filter(item => item.equipeId === equipe.id)
-        .map(item => ({
-          id: item.id,
-          equipe: item.equipe,
-          index: item.index,
-          codigoBinario: item.codigoBinario,
-          fragment: item.fragment,
-          fragmento: item.fragmento,
-          createdAt: item.createdAt
-        }));
+      const [leituras, pontuacaoSalva] = await Promise.all([
+        getLeiturasEquipe(atividade.id, equipe.id),
+        prisma.pontuacao.findUnique({ where: { atividadeId_equipeId: { atividadeId: atividade.id, equipeId: equipe.id } } })
+      ]);
 
-      const avaliacao = avaliarEquipe(db, equipe.id);
-      const pontuacaoSalva = getPontuacaoSalva(db, equipe.id);
+      const avaliacao = avaliarComDados(atividade.frases, leituras);
 
       return sendJson(res, 200, {
         equipe: equipe.nome,
-        leituras,
+        leituras: leituras.map(toLeituraApi),
         avaliacao,
         pontuacao: pontuacaoSalva ? pontuacaoSalva.pontuacao : avaliacao.pontuacao
-      });
+      }, startedAt);
     }
 
     if (url.pathname === '/api/reset-equipe' && req.method === 'POST') {
       const body = await parseBody(req);
-      const db = readDb();
-
+      await aguardarEscritasPendentes();
+      const atividade = await getAtividadeAtivaCached();
       const nomeEquipe = body.equipe || body.nomeEquipe;
-      const equipe = findEquipeByNome(db, nomeEquipe);
+      const equipe = await findEquipeByNome(nomeEquipe);
 
-      if (!equipe) {
+      if (!atividade || !equipe) {
         return sendJson(res, 200, {
           mensagem: 'Equipe ainda não existe. Nada para limpar.',
           equipe: normalizarNomeEquipe(nomeEquipe) || nomeEquipe
-        });
+        }, startedAt);
       }
 
-      db.leituras = db.leituras.filter(item => item.equipeId !== equipe.id);
+      await prisma.leitura.deleteMany({ where: { atividadeId: atividade.id, equipeId: equipe.id } });
 
-      if (db.latest && db.latest.equipe && db.latest.equipe.toLowerCase() === equipe.nome.toLowerCase()) {
-        db.latest = null;
+      // Como /api/qr/latest usa memória para ficar rápido, precisamos apagar
+      // a última leitura em memória quando a mesa daquela equipe for limpa.
+      if (ultimoQrLido && String(ultimoQrLido.equipe || '').toLowerCase() === String(equipe.nome || '').toLowerCase()) {
+        ultimoQrLido = null;
       }
-
-      writeDb(db);
 
       return sendJson(res, 200, {
         mensagem: `Mesa da ${equipe.nome} limpa com sucesso.`,
         equipe: equipe.nome
-      });
+      }, startedAt);
     }
 
     if (url.pathname === '/api/supabase/status' && req.method === 'GET') {
-      if (!supabase) {
-        return sendJson(res, 200, {
-          conectado: false,
-          mensagem: 'Supabase não está configurado. O sistema está usando db.json.'
-        });
-      }
-
-      const { data, error } = await supabase
-        .from('equipes')
-        .select('id')
-        .limit(1);
-
-      if (error) {
-        return sendJson(res, 500, {
-          conectado: false,
-          mensagem: 'Supabase configurado, mas houve erro ao consultar.',
-          erro: error.message
-        });
-      }
-
-      return sendJson(res, 200, {
-        conectado: true,
-        mensagem: 'Supabase conectado com sucesso.'
-      });
+      await prisma.$queryRaw`SELECT 1`;
+      return sendJson(res, 200, { conectado: true, mensagem: 'Supabase conectado com Prisma.' }, startedAt);
     }
 
     if (url.pathname === '/api/auth/login' && req.method === 'POST') {
       const body = await parseBody(req);
-
       const resultado = loginAdmin(body.accessKey);
 
-      if (!resultado.ok) {
-        return sendJson(res, resultado.status, {
-          error: resultado.error
-        });
-      }
-
-      return sendJson(res, 200, {
-        mensagem: 'Login admin realizado com sucesso.',
-        token: resultado.token
-      });
+      if (!resultado.ok) return sendJson(res, resultado.status, { error: resultado.error }, startedAt);
+      return sendJson(res, 200, { mensagem: 'Login admin realizado com sucesso.', token: resultado.token }, startedAt);
     }
 
     if (url.pathname === '/api/admin/reset-json' && req.method === 'POST') {
       if (!requireAdmin(req, res, sendJson)) return;
-
-      resetarJsonLocal();
-
-      return sendJson(res, 200, {
-        mensagem: 'Banco local db.json apagado com sucesso.'
-      });
+      return sendJson(res, 410, { error: 'O db.json não é mais usado. Use /api/admin/reset-supabase.' }, startedAt);
     }
 
     if (url.pathname === '/api/admin/reset-supabase' && req.method === 'POST') {
       if (!requireAdmin(req, res, sendJson)) return;
-
       const resultado = await resetarSupabase();
-
-      return sendJson(res, 200, resultado);
+      return sendJson(res, 200, resultado, startedAt);
     }
 
     if (url.pathname === '/api/admin/reset-tudo' && req.method === 'POST') {
       if (!requireAdmin(req, res, sendJson)) return;
-
-      resetarJsonLocal();
-
-      let resultadoSupabase = {
-        ok: false,
-        mensagem: 'Supabase não foi resetado porque não está configurado.'
-      };
-
-      if (supabase) {
-        resultadoSupabase = await resetarSupabase();
-      }
-
-      return sendJson(res, 200, {
-        mensagem: 'Reset executado.',
-        jsonLocal: 'db.json apagado com sucesso.',
-        supabase: resultadoSupabase
-      });
+      const resultado = await resetarSupabase();
+      return sendJson(res, 200, { mensagem: 'Reset executado.', supabase: resultado }, startedAt);
     }
 
-    if (url.pathname === '/api/docs.json' && req.method === 'GET') {      
-      return sendSwaggerJson(res, sendJson);
-    }
+    if (url.pathname === '/api/docs.json' && req.method === 'GET') return sendSwaggerJson(res, sendJson);
+    if (url.pathname === '/docs' && req.method === 'GET') return sendSwaggerUi(res);
 
-    if (url.pathname === '/docs' && req.method === 'GET') {
-      return sendSwaggerUi(res);
-    }
-
-    if (url.pathname.startsWith('/api/')) {
-      return sendJson(res, 404, { error: 'Rota da API não encontrada.' });
-    }
+    if (url.pathname.startsWith('/api/')) return sendJson(res, 404, { error: 'Rota da API não encontrada.' }, startedAt);
 
     return serveStatic(req, res);
   } catch (error) {
-    return sendJson(res, 500, { error: error.message || 'Erro interno no servidor.' });
+    return sendJson(res, 500, { error: error.message || 'Erro interno no servidor.' }, startedAt);
   }
 });
 
 server.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
+
+process.on('SIGINT', async () => {
+  await prisma.$disconnect();
+  process.exit(0);
 });

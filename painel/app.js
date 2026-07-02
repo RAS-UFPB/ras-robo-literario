@@ -3,6 +3,8 @@ let atividadeFrases = [];
 let equipeAtual = 'Equipe 1';
 let leiturasEquipeAtual = [];
 let lastQRId = null;
+let qrRequestEmAndamento = false;
+const leituraIdsRenderizadas = new Set();
 
 function startClock() {
   const el = document.getElementById('clock');
@@ -41,7 +43,7 @@ function startConnectionMonitor() {
   }
 
   check();
-  setInterval(check, 3000);
+  setInterval(check, 10000);
 }
 
 async function apiFetch(url, options = {}) {
@@ -225,7 +227,9 @@ async function carregarEquipe(nomeEquipe) {
   const dados = await apiFetch(`/api/leituras?equipe=${encodeURIComponent(equipe)}`);
   if (!dados) return;
 
+  leituraIdsRenderizadas.clear();
   leiturasEquipeAtual = Array.isArray(dados.leituras) ? dados.leituras : [];
+  leiturasEquipeAtual.forEach(item => leituraIdsRenderizadas.add(item.id));
   renderizarMesaDeMontagem(leiturasEquipeAtual);
 
   const avaliacao = dados.avaliacao || {};
@@ -240,8 +244,8 @@ async function carregarEquipe(nomeEquipe) {
     atualizarStatusRobo(`Palavra lida: "${ultimaLeitura.fragment || ultimaLeitura.fragmento || ''}"`, 'sucesso');
   }
 
-  await carregarPlacar();
-  // Atualiza a visualização da frase com a pontuação atual da equipe
+  // Não chama /api/placar aqui, porque placar é a rota mais pesada.
+  // O placar é atualizado ao validar e em intervalo separado.
   renderizarBinarioDaFrase(atividadeFrases, avaliacao);
 }
 
@@ -260,16 +264,25 @@ async function carregarAtividadeAtual() {
 }
 
 async function fetchQRReading() {
-  const data = await apiFetch('/api/qr/latest');
-  if (!data || !data.id || data.id === lastQRId) return;
+  if (qrRequestEmAndamento) return;
+  qrRequestEmAndamento = true;
 
-  lastQRId = data.id;
-  const leituraEquipe = normalizarEquipe(data.equipe || equipeAtual);
+  try {
+    const data = await apiFetch('/api/qr/latest');
+    if (!data || !data.id || data.id === lastQRId || leituraIdsRenderizadas.has(data.id)) return;
 
-  atualizarStatusRobo(`Palavra lida: "${data.fragment || data.fragmento || ''}"`, 'sucesso');
+    lastQRId = data.id;
+    const leituraEquipe = normalizarEquipe(data.equipe || equipeAtual);
 
-  if (String(leituraEquipe).toLowerCase() === equipeAtual.toLowerCase()) {
-    await carregarEquipe(equipeAtual);
+    atualizarStatusRobo(`Palavra lida: "${data.fragment || data.fragmento || ''}"`, 'sucesso');
+
+    if (String(leituraEquipe).toLowerCase() === equipeAtual.toLowerCase()) {
+      leituraIdsRenderizadas.add(data.id);
+      leiturasEquipeAtual.push(data);
+      renderizarMesaDeMontagem(leiturasEquipeAtual);
+    }
+  } finally {
+    qrRequestEmAndamento = false;
   }
 }
 
@@ -309,6 +322,7 @@ async function definirNovaFrase() {
   inputEl.value = '';
 
   await carregarEquipe(obterEquipeAtual());
+  await carregarPlacar();
 }
 
 async function simularLeitura() {
@@ -343,7 +357,12 @@ async function simularLeitura() {
   atualizarStatusRobo(`Palavra lida: "${leitura.fragment || leitura.fragmento || ''}"`, 'sucesso');
   inputBinario.value = '';
 
-  await carregarEquipe(equipe);
+  // Atualiza a tela na hora, sem esperar outra chamada em /api/leituras e /api/placar.
+  if (leitura.id && !leituraIdsRenderizadas.has(leitura.id)) {
+    leituraIdsRenderizadas.add(leitura.id);
+    leiturasEquipeAtual.push(leitura);
+    renderizarMesaDeMontagem(leiturasEquipeAtual);
+  }
 }
 
 async function validarSequencia() {
@@ -408,6 +427,7 @@ async function limparMesaEquipeAtual() {
 
   lastQRId = null;
   leiturasEquipeAtual = [];
+  leituraIdsRenderizadas.clear();
   atualizarResultado('Aguardando leitura dos blocos...', 'neutro');
   atualizarStatusSimulador(`Mesa da ${equipe} limpa com sucesso.`, 'sucesso');
   atualizarStatusRobo('Aguardando comandos...', 'neutro');
@@ -449,5 +469,8 @@ window.onload = async () => {
   await carregarAtividadeAtual();
   await carregarEquipe(equipeAtual);
   await carregarPlacar();
-  setInterval(fetchQRReading, 800);
+
+  // Evita chuva de requisições. Se uma ainda estiver rodando, a próxima é ignorada.
+  setInterval(fetchQRReading, 3000);
+  setInterval(carregarPlacar, 15000);
 };
