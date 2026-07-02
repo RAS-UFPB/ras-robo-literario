@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Atividade {
+  id        Int      @id @default(autoincrement())
+  textoAlvo String   @map("texto_alvo")
+  ativa     Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  frases     Frase[]
+  leituras   Leitura[]
+  pontuacoes Pontuacao[]
+
+  @@map("atividades")
+}
+
+model Frase {
+  id            Int      @id @default(autoincrement())
+  atividadeId   Int      @map("atividade_id")
+  indice        Int
+  codigoBinario String   @map("codigo_binario")
+  texto         String
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  atividade Atividade @relation(fields: [atividadeId], references: [id], onDelete: Cascade)
+  leituras  Leitura[]
+
+  @@unique([atividadeId, indice])
+  @@unique([atividadeId, codigoBinario])
+  @@map("frases")
+}
+
+model Equipe {
+  id        Int      @id @default(autoincrement())
+  nome      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  leituras   Leitura[]
+  pontuacoes Pontuacao[]
+
+  @@map("equipes")
+}
+
+model Leitura {
+  id            Int      @id @default(autoincrement())
+  atividadeId   Int      @map("atividade_id")
+  equipeId      Int      @map("equipe_id")
+  fraseId       Int      @map("frase_id")
+  ordem         Int
+  codigoBinario String   @map("codigo_binario")
+  fragmento     String
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  atividade Atividade @relation(fields: [atividadeId], references: [id], onDelete: Cascade)
+  equipe    Equipe    @relation(fields: [equipeId], references: [id], onDelete: Cascade)
+  frase     Frase     @relation(fields: [fraseId], references: [id], onDelete: Cascade)
+
+  @@map("leituras")
+}
+
+model Pontuacao {
+  id                    Int      @id @default(autoincrement())
+  atividadeId            Int      @map("atividade_id")
+  equipeId               Int      @map("equipe_id")
+  pontuacao              Int      @default(0)
+  corretas               Int      @default(0)
+  total                  Int      @default(0)
+  ultimaPontuacaoRodada  Int      @default(0) @map("ultima_pontuacao_rodada")
+  ultimaAssinatura       String?  @map("ultima_assinatura")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  atividade Atividade @relation(fields: [atividadeId], references: [id], onDelete: Cascade)
+  equipe    Equipe    @relation(fields: [equipeId], references: [id], onDelete: Cascade)
+
+  @@unique([atividadeId, equipeId])
+  @@map("pontuacoes")
+}

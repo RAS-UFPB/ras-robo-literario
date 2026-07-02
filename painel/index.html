@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LED - Robô Literário</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav class="top-nav">
+    <a class="logo" href="#" aria-label="Página inicial do painel LED">
+      <span class="logo-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" role="img">
+          <path d="M12 3v2.2" />
+          <path d="M8.2 5.2h7.6a4 4 0 0 1 4 4v5.1a4 4 0 0 1-4 4H8.2a4 4 0 0 1-4-4V9.2a4 4 0 0 1 4-4Z" />
+          <path d="M8.8 11h.1" />
+          <path d="M15.1 11h.1" />
+          <path d="M9.2 14.2c1.7 1 3.9 1 5.6 0" />
+          <path d="M4.2 11H2.6" />
+          <path d="M21.4 11h-1.6" />
+        </svg>
+      </span>
+      <span class="logo-text">
+        <strong>LED</strong>
+        <span>Painel do Professor</span>
+      </span>
+    </a>
+
+    <ul class="nav-links" aria-label="Navegação principal">
+      <li><a href="#" class="active">Dashboard</a></li>
+      <li><a href="#">Atividades</a></li>
+      <li><a href="#">Relatórios</a></li>
+    </ul>
+  </nav>
+
+  <main class="container">
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">Robô Literário</span>
+        <h1>Visão geral do sistema</h1>
+        <p>Resumo das atividades pedagógicas, simulação de leitura e acompanhamento por QR Code.</p>
+      </div>
+      <div class="clock" id="clock" aria-label="Horário atual">--:--:--</div>
+    </header>
+
+    <div class="dashboard-grid">
+      <section class="main-content" aria-label="Painel principal">
+        <div class="card config-card">
+          <div class="section-heading">
+            <span class="step-badge">1</span>
+            <div>
+              <h2 class="card-title">Configurar atividade</h2>
+              <p class="card-desc">Digite a frase que os alunos devem formar. Use <strong>|</strong> para separar trechos, se quiser.</p>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <input type="text" id="input-nova-frase" placeholder="Ex: o menino maluquinho">
+            <button class="btn btn-primary" onclick="definirNovaFrase()">Iniciar atividade</button>
+          </div>
+          <div id="status-frase-alvo" class="status-msg">Nenhuma frase definida</div>
+          <div id="frase-binaria" class="binary-preview" aria-live="polite"></div>
+        </div>
+
+        <div class="card demo-card">
+          <div class="section-heading">
+            <span class="step-badge">2</span>
+            <div>
+              <h2 class="card-title">Simular leitura da ESP32-CAM</h2>
+              <p class="card-desc">Envie um código binário como se ele tivesse vindo do QR Code. Exemplo: <strong>0000</strong> = bloco 1, <strong>0001</strong> = bloco 2.</p>
+            </div>
+          </div>
+
+          <div class="input-group demo-inputs">
+            <input type="text" id="input-equipe" value="Equipe 1" placeholder="Nome da equipe">
+            <input type="text" id="input-binario" placeholder="Ex: 0000">
+            <button class="btn btn-success" onclick="simularLeitura()">Enviar leitura</button>
+          </div>
+          <div id="status-simulador" class="status-msg">Aguardando simulação...</div>
+        </div>
+
+        <div class="card">
+          <div class="section-heading">
+            <span class="step-badge">3</span>
+            <div>
+              <h2 class="card-title" id="titulo-mesa-equipe">Mesa de montagem - Equipe 1</h2>
+              <p class="card-desc">Os blocos lidos pelo robô aparecerão aqui em tempo real, na ordem em que foram enviados para a equipe selecionada.</p>
+            </div>
+          </div>
+
+          <div id="mesa-montagem" class="mesa-de-montagem" aria-live="polite"></div>
+
+          <div class="actions">
+            <button class="btn btn-success" onclick="validarSequencia()">Verificar resposta</button>
+            <button class="btn btn-outline" onclick="limparMesaEquipeAtual()">Limpar mesa da equipe</button>
+          </div>
+
+          <div id="resultado-validacao" class="resultado-msg">Aguardando leitura dos blocos...</div>
+        </div>
+      </section>
+
+      <aside class="side-content" aria-label="Status e placar">
+        <div class="card robot-card">
+          <div class="section-heading compact">
+            <span class="status-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" role="img">
+                <path d="M5 12.5a10 10 0 0 1 14 0" />
+                <path d="M8.4 15.8a5.2 5.2 0 0 1 7.2 0" />
+                <path d="M12 19h.1" />
+              </svg>
+            </span>
+            <div>
+              <h2 class="card-title">Status do robô ESP32</h2>
+              <p class="card-desc">Monitoramento da conexão e da última ação registrada.</p>
+            </div>
+          </div>
+
+          <div class="status-box">
+            <div class="status-header">
+              <span>Conexão API</span>
+              <div class="status-indicator">
+                <span class="status-dot offline" id="conn-dot"></span>
+                <span id="conn-label">Desconectado</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="robot-avatar" aria-hidden="true">
+            <svg viewBox="0 0 180 180" role="img">
+              <circle cx="90" cy="90" r="72" class="robot-bg" />
+              <rect x="51" y="58" width="78" height="64" rx="22" class="robot-face" />
+              <path d="M90 43v15" class="robot-line" />
+              <circle cx="90" cy="38" r="5" class="robot-dot" />
+              <circle cx="75" cy="86" r="5" class="robot-eye" />
+              <circle cx="105" cy="86" r="5" class="robot-eye" />
+              <path d="M76 103c8 7 20 7 28 0" class="robot-smile" />
+              <path d="M51 90H37" class="robot-line" />
+              <path d="M143 90h-14" class="robot-line" />
+            </svg>
+          </div>
+
+          <div class="robot-info">
+            <span class="info-label">Última ação</span>
+            <strong id="status-robo">Aguardando comandos...</strong>
+          </div>
+        </div>
+
+        <div class="card score-card">
+          <div class="section-heading compact">
+            <span class="step-badge">4</span>
+            <div>
+              <h2 class="card-title">Pontuação e placar</h2>
+              <p class="card-desc">Resultado calculado pela API do backend.</p>
+            </div>
+          </div>
+
+          <div id="pontuacao-atual" class="score-number">0</div>
+          <div id="placar" class="placar-lista">Nenhuma equipe avaliada ainda.</div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
