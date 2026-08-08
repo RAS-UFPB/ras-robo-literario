@@ -5,6 +5,8 @@ let leiturasEquipeAtual = [];
 let lastQRId = null;
 let qrRequestEmAndamento = false;
 const leituraIdsRenderizadas = new Set();
+const PONTOS_FRASE_NO_LUGAR = 10;
+const PONTOS_DUPLA_EM_SEQUENCIA = 5;
 
 function startClock() {
   const el = document.getElementById('clock');
@@ -146,11 +148,13 @@ function renderizarBinarioDaFrase(frases, avaliacao = null) {
   const blocosOrdenados = [...blocos].sort((a, b) => a.indice - b.indice);
   const textoFrase = blocosOrdenados.map(item => item.texto).join(' | ');
 
-  const pontosPorBloco = 10;
-  const totalPontos = blocosOrdenados.length * pontosPorBloco;
+  const totalPontosPadrao = (blocosOrdenados.length * PONTOS_FRASE_NO_LUGAR)
+    + (Math.max(blocosOrdenados.length - 1, 0) * PONTOS_DUPLA_EM_SEQUENCIA);
+  const totalPontos = Number(avaliacao?.pontuacaoMaxima ?? totalPontosPadrao);
   const pontosGanhos = Number(avaliacao?.pontuacao ?? 0);
+  const duplasCorretas = Number(avaliacao?.duplasCorretas ?? 0);
 
-  status.innerHTML = `Frase ativa: <strong>"${textoFrase}"</strong> (${blocosOrdenados.length} blocos) — Pontuação: ${pontosGanhos}/${totalPontos} pts`;
+  status.innerHTML = `Frase ativa: <strong>"${textoFrase}"</strong> (${blocosOrdenados.length} blocos) — Pontuação: ${pontosGanhos}/${totalPontos} pts — Duplas em sequência: ${duplasCorretas}/${Math.max(blocosOrdenados.length - 1, 0)}`;
   status.style.color = 'var(--accent-dark)';
   area.innerHTML = blocosOrdenados
     .map(item => `<span class="binary-chip">${item.texto} <strong>${item.codigoBinario}</strong></span>`)
@@ -204,8 +208,8 @@ function renderizarPlacar(placar) {
           <span>${pontuacao} pts</span>
         </div>
         <div class="placar-metrica">
-          <span>${corretas}/${total} corretas</span>
-          <span>${Number(item.blocosEncontrados) || corretas} blocos</span>
+          <span>${corretas}/${total} no lugar certo</span>
+          <span>última rodada: ${Number(item.ultimaPontuacaoRodada) || 0} pts</span>
         </div>
         <div class="placar-barra"><span style="width: ${largura}%"></span></div>
       </div>
@@ -396,17 +400,22 @@ async function validarSequencia() {
   const total = Number(resposta.total ?? fraseCorreta.length);
   const corretas = Number(resposta.corretas ?? 0);
   const pontuacao = Number(resposta.pontuacao ?? 0);
+  const pontuacaoRodada = Number(resposta.pontuacaoRodada ?? resposta.pontuacao ?? 0);
+  const pontuacaoPosicao = Number(resposta.pontuacaoPosicao ?? 0);
+  const pontuacaoSequencia = Number(resposta.pontuacaoSequencia ?? 0);
+  const duplasCorretas = Number(resposta.duplasCorretas ?? 0);
+  const totalDuplas = Math.max(total - 1, 0);
 
   if (corretas === total && total > 0) {
-    feedback.textContent = `Excelente! ${equipeAtual} montou a frase corretamente. Pontuação: ${pontuacao}`;
+    feedback.textContent = `Excelente! ${equipeAtual} montou a frase corretamente. Rodada: ${pontuacaoRodada} pts (${pontuacaoPosicao} por posição + ${pontuacaoSequencia} por sequência). Total acumulado: ${pontuacao} pts.`;
     feedback.style.color = 'var(--green)';
   } else {
-    feedback.textContent = `Ainda tem algo diferente. ${corretas}/${total} blocos corretos. Pontuação: ${pontuacao}`;
+    feedback.textContent = `Ainda tem algo diferente. ${corretas}/${total} blocos no lugar certo e ${duplasCorretas}/${totalDuplas} duplas em sequência. Rodada: ${pontuacaoRodada} pts (${pontuacaoPosicao} + ${pontuacaoSequencia}). Total acumulado: ${pontuacao} pts.`;
     feedback.style.color = 'var(--red)';
   }
 
-  // Atualiza a visualização da frase com a pontuação obtida na validação
-  renderizarBinarioDaFrase(atividadeFrases, { pontuacao });
+  // Atualiza a visualização da frase com a pontuação obtida na validação.
+  renderizarBinarioDaFrase(atividadeFrases, resposta);
 
   await carregarPlacar();
 }

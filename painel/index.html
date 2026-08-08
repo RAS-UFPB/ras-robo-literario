@@ -53,12 +53,12 @@
             <span class="step-badge">1</span>
             <div>
               <h2 class="card-title">Configurar atividade</h2>
-              <p class="card-desc">Digite a frase que os alunos devem formar. Use <strong>|</strong> para separar trechos, se quiser.</p>
+              <p class="card-desc">Digite o trecho da história que os alunos devem montar. Use <strong>|</strong> para separar cada frase ou parte maior.</p>
             </div>
           </div>
 
           <div class="input-group">
-            <input type="text" id="input-nova-frase" placeholder="Ex: o menino maluquinho">
+            <input type="text" id="input-nova-frase" placeholder="Ex: O pequeno príncipe conheceu a raposa | A raposa ensinou ao pequeno príncipe | O encontro virou amizade">
             <button class="btn btn-primary" onclick="definirNovaFrase()">Iniciar atividade</button>
           </div>
           <div id="status-frase-alvo" class="status-msg">Nenhuma frase definida</div>
@@ -87,7 +87,7 @@
             <span class="step-badge">3</span>
             <div>
               <h2 class="card-title" id="titulo-mesa-equipe">Mesa de montagem - Equipe 1</h2>
-              <p class="card-desc">Os blocos lidos pelo robô aparecerão aqui em tempo real, na ordem em que foram enviados para a equipe selecionada.</p>
+              <p class="card-desc">Os blocos/frases lidos pelo robô aparecerão aqui em tempo real, na ordem em que foram enviados para a equipe selecionada.</p>
             </div>
           </div>
 
@@ -153,7 +153,7 @@
             <span class="step-badge">4</span>
             <div>
               <h2 class="card-title">Pontuação e placar</h2>
-              <p class="card-desc">Resultado calculado pela API do backend.</p>
+              <p class="card-desc">Resultado calculado pela API: posição certa + duplas em sequência.</p>
             </div>
           </div>
 

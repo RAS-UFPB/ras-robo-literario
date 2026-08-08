@@ -95,7 +95,7 @@ function getSwaggerSpec() {
                   properties: {
                     textoAlvo: {
                       type: 'string',
-                      example: 'o menino maluquinho'
+                      example: 'O pequeno príncipe conheceu a raposa | A raposa ensinou ao pequeno príncipe | O encontro virou amizade'
                     }
                   },
                   required: ['textoAlvo']
@@ -178,7 +178,7 @@ function getSwaggerSpec() {
 
       '/api/validar': {
         post: {
-          summary: 'Valida a sequência enviada por uma equipe',
+          summary: 'Valida a sequência enviada por uma equipe usando posição certa e duplas em sequência',
           requestBody: {
             required: true,
             content: {

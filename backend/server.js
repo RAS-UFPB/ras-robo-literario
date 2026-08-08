@@ -166,26 +166,85 @@ async function getLeiturasEquipe(atividadeId, equipeId) {
   });
 }
 
+const PONTOS_FRASE_NO_LUGAR = 10;
+const PONTOS_DUPLA_EM_SEQUENCIA = 5;
+
 function avaliarComDados(frasesOrdenadas, leiturasEquipe) {
   let corretas = 0;
+  const posicoesCorretas = [];
 
   for (let i = 0; i < frasesOrdenadas.length; i++) {
     const fraseEsperada = frasesOrdenadas[i];
     const leituraRecebida = leiturasEquipe[i];
     if (!leituraRecebida) continue;
-    if (leituraRecebida.frase?.indice === fraseEsperada.indice) corretas++;
+
+    if (leituraRecebida.frase?.indice === fraseEsperada.indice) {
+      corretas++;
+      posicoesCorretas.push({
+        posicao: i + 1,
+        indice: fraseEsperada.indice,
+        texto: fraseEsperada.texto
+      });
+    }
   }
 
   const indicesEsperados = frasesOrdenadas.map(item => item.indice);
   const indicesLidos = leiturasEquipe.map(item => item.frase?.indice).filter(Boolean);
+  const textosPorIndice = new Map(frasesOrdenadas.map(item => [item.indice, item.texto]));
 
+  const paresEsperados = new Set();
+  for (let i = 0; i < indicesEsperados.length - 1; i++) {
+    paresEsperados.add(`${indicesEsperados[i]}-${indicesEsperados[i + 1]}`);
+  }
+
+  const paresJaPontuados = new Set();
+  const duplasEmSequencia = [];
+
+  for (let i = 0; i < indicesLidos.length - 1; i++) {
+    const primeiro = indicesLidos[i];
+    const segundo = indicesLidos[i + 1];
+    const chave = `${primeiro}-${segundo}`;
+
+    // Pontua apenas duplas vizinhas que aparecem na mesma ordem da frase ideal.
+    // O Set evita pontuar a mesma dupla repetida várias vezes.
+    if (paresEsperados.has(chave) && !paresJaPontuados.has(chave)) {
+      paresJaPontuados.add(chave);
+      duplasEmSequencia.push({
+        posicaoRecebida: i + 1,
+        indices: [primeiro, segundo],
+        textos: [textosPorIndice.get(primeiro), textosPorIndice.get(segundo)].filter(Boolean)
+      });
+    }
+  }
+
+  const duplasCorretas = duplasEmSequencia.length;
   const blocosEncontrados = indicesLidos.filter(index => indicesEsperados.includes(index)).length;
   const total = frasesOrdenadas.length;
   const lidas = leiturasEquipe.length;
   const faltando = Math.max(total - blocosEncontrados, 0);
-  const pontuacao = corretas * 10;
+  const pontuacaoPosicao = corretas * PONTOS_FRASE_NO_LUGAR;
+  const pontuacaoSequencia = duplasCorretas * PONTOS_DUPLA_EM_SEQUENCIA;
+  const pontuacao = pontuacaoPosicao + pontuacaoSequencia;
+  const pontuacaoMaxima = (total * PONTOS_FRASE_NO_LUGAR) + (Math.max(total - 1, 0) * PONTOS_DUPLA_EM_SEQUENCIA);
 
-  return { corretas, blocosEncontrados, total, lidas, faltando, pontuacao };
+  return {
+    corretas,
+    blocosEncontrados,
+    total,
+    lidas,
+    faltando,
+    pontuacao,
+    pontuacaoPosicao,
+    pontuacaoSequencia,
+    pontuacaoMaxima,
+    pontosPorFraseNoLugar: PONTOS_FRASE_NO_LUGAR,
+    pontosPorDuplaEmSequencia: PONTOS_DUPLA_EM_SEQUENCIA,
+    duplasCorretas,
+    posicoesCorretas,
+    duplasEmSequencia,
+    sequenciaEsperada: indicesEsperados,
+    sequenciaRecebida: indicesLidos
+  };
 }
 
 async function avaliarEquipe(atividade, equipeId) {
@@ -455,7 +514,8 @@ const server = http.createServer(async (req, res) => {
         total: item.total,
         lidas: item.total,
         faltando: Math.max(item.total - item.corretas, 0),
-        pontuacao: item.pontuacao
+        pontuacao: item.pontuacao,
+        ultimaPontuacaoRodada: item.ultimaPontuacaoRodada
       }));
 
       return sendJson(res, 200, { placar }, startedAt);
