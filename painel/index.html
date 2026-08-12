@@ -30,13 +30,14 @@
     </a>
 
     <ul class="nav-links" aria-label="Navegação principal">
-      <li><a href="#" class="active">Dashboard</a></li>
-      <li><a href="#">Atividades</a></li>
-      <li><a href="#">Relatórios</a></li>
+      <li><a href="#" class="active" data-page="dashboard">Dashboard</a></li>
+      <li><a href="#" data-page="contos">Contos e perguntas</a></li>
+      <li><a href="#" data-page="relatorios">Relatórios</a></li>
     </ul>
   </nav>
 
   <main class="container">
+    <section id="pagina-dashboard" class="page-section active">
     <header class="page-header">
       <div>
         <span class="eyebrow">Robô Literário</span>
@@ -162,6 +163,207 @@
         </div>
       </aside>
     </div>
+    </section>
+
+    <section id="pagina-contos" class="page-section" hidden>
+      <header class="page-header contos-header">
+        <div>
+          <span class="eyebrow">Leitura e interpretação</span>
+          <h1>Contos e perguntas</h1>
+          <p>Prepare a leitura, conduza a pergunta e use o modo de apresentação para projetar o conteúdo para a turma.</p>
+        </div>
+
+        <div class="contos-header-actions">
+          <button class="btn btn-outline" type="button" onclick="abrirGerenciadorConteudo()">Gerenciar conteúdo</button>
+          <button class="btn btn-primary" type="button" onclick="abrirApresentacao()">Apresentar no quadro</button>
+        </div>
+      </header>
+
+      <div class="contos-workspace">
+        <section class="card conto-toolbar" aria-label="Seleção do conto">
+          <div class="conto-select-group">
+            <label for="conto-select">Conto</label>
+            <select id="conto-select" class="conto-select" onchange="selecionarConto(this.value)"></select>
+          </div>
+
+          <div class="conto-toolbar-meta">
+            <div>
+              <span>Autor</span>
+              <strong id="conto-autor">Irmãos Grimm</strong>
+            </div>
+            <div>
+              <span>Atividade</span>
+              <strong id="pergunta-indicador">Pergunta 1 de 1</strong>
+            </div>
+          </div>
+        </section>
+
+        <article class="card leitura-card">
+          <div class="leitura-cabecalho">
+            <div>
+              <span class="conto-label">Trecho para leitura</span>
+              <h2 id="conto-titulo">Os Sete Corvos</h2>
+            </div>
+            <span id="pergunta-tema" class="tema-chip">Compreensão</span>
+          </div>
+
+          <p id="conto-resumo" class="conto-resumo"></p>
+          <blockquote id="conto-trecho" class="conto-trecho"></blockquote>
+        </article>
+
+        <section class="card pergunta-card">
+          <span class="conto-label">Pergunta para os alunos</span>
+          <div id="conto-pergunta" class="pergunta-destaque"></div>
+
+          <div id="resposta-esperada" class="resposta-esperada" hidden>
+            <span>Resposta esperada</span>
+            <p id="resposta-texto"></p>
+          </div>
+
+          <div class="contos-actions">
+            <div class="contos-actions-left">
+              <button class="btn btn-outline" type="button" onclick="perguntaAnterior()">Anterior</button>
+              <button class="btn btn-outline" id="btn-resposta" type="button" onclick="alternarResposta()">Mostrar resposta esperada</button>
+            </div>
+            <button class="btn btn-primary" type="button" onclick="proximaPergunta()">Próxima pergunta</button>
+          </div>
+        </section>
+      </div>
+
+      <section id="presentation-stage" class="presentation-stage" hidden aria-hidden="true">
+        <header class="presentation-header">
+          <div>
+            <span id="presentation-kicker">Leitura e interpretação</span>
+            <strong id="presentation-title">Os Sete Corvos</strong>
+            <span id="presentation-author">Irmãos Grimm</span>
+          </div>
+          <button class="presentation-exit" type="button" onclick="fecharApresentacao()">Sair da apresentação</button>
+        </header>
+
+        <main class="presentation-content">
+          <section class="presentation-reading">
+            <span>Trecho</span>
+            <blockquote id="presentation-trecho"></blockquote>
+          </section>
+
+          <section class="presentation-question">
+            <span id="presentation-progress">Pergunta 1 de 1</span>
+            <h2 id="presentation-pergunta"></h2>
+          </section>
+        </main>
+
+        <footer class="presentation-controls">
+          <button type="button" onclick="perguntaAnterior()">← Anterior</button>
+          <span>Use as setas do teclado para navegar</span>
+          <button type="button" onclick="proximaPergunta()">Próxima →</button>
+        </footer>
+      </section>
+
+      <dialog id="conteudo-dialog" class="conteudo-dialog">
+        <div class="dialog-shell">
+          <header class="dialog-header">
+            <div>
+              <span class="eyebrow">Conteúdo da professora</span>
+              <h2>Gerenciar contos e perguntas</h2>
+              <p>Cadastre novos materiais sem precisar alterar o código.</p>
+            </div>
+            <button class="dialog-close" type="button" aria-label="Fechar" onclick="fecharGerenciadorConteudo()">×</button>
+          </header>
+
+          <div class="gerenciamento-grid">
+            <form class="gerenciamento-card" onsubmit="adicionarConto(event)">
+              <div class="gerenciamento-heading">
+                <span class="step-badge">1</span>
+                <div>
+                  <h3>Novo conto</h3>
+                  <p>Crie o material que receberá os trechos e perguntas.</p>
+                </div>
+              </div>
+
+              <label>
+                Título do conto
+                <input id="novo-conto-titulo" type="text" required placeholder="Ex: Os Sete Corvos">
+              </label>
+              <label>
+                Autor
+                <input id="novo-conto-autor" type="text" placeholder="Ex: Irmãos Grimm">
+              </label>
+              <label>
+                Resumo curto
+                <textarea id="novo-conto-resumo" rows="3" placeholder="Uma breve descrição para a professora."></textarea>
+              </label>
+
+              <button class="btn btn-primary" type="submit">Adicionar conto</button>
+            </form>
+
+            <form class="gerenciamento-card" onsubmit="salvarPerguntaGerenciada(event)">
+              <div class="gerenciamento-heading">
+                <span class="step-badge">2</span>
+                <div>
+                  <h3>Trecho e pergunta</h3>
+                  <p>Escolha o conto e cadastre exatamente o que será apresentado.</p>
+                </div>
+              </div>
+
+              <label>
+                Conto
+                <select id="gerenciar-conto-select" onchange="cancelarEdicaoPergunta(); renderizarPerguntasGerenciador()"></select>
+              </label>
+              <label>
+                Tema da pergunta
+                <input id="gerenciar-tema" type="text" placeholder="Ex: Causa e consequência">
+              </label>
+              <label>
+                Trecho para leitura
+                <textarea id="gerenciar-trecho" rows="5" required placeholder="Cole aqui o trecho que será mostrado aos alunos."></textarea>
+              </label>
+              <label>
+                Pergunta
+                <textarea id="gerenciar-pergunta" rows="3" required placeholder="Digite a pergunta que será feita aos alunos."></textarea>
+              </label>
+              <label>
+                Resposta esperada
+                <textarea id="gerenciar-resposta" rows="3" placeholder="Opcional, visível somente para a professora."></textarea>
+              </label>
+
+              <input id="gerenciar-edicao-index" type="hidden" value="">
+
+              <div class="gerenciamento-actions">
+                <button id="btn-cancelar-edicao" class="btn btn-outline" type="button" onclick="cancelarEdicaoPergunta()" hidden>Cancelar edição</button>
+                <button id="btn-salvar-pergunta" class="btn btn-primary" type="submit">Adicionar pergunta</button>
+              </div>
+            </form>
+          </div>
+
+          <section class="perguntas-cadastradas">
+            <div class="perguntas-lista-header">
+              <div>
+                <h3>Perguntas cadastradas</h3>
+                <p>Edite ou exclua itens sem abrir o código do projeto.</p>
+              </div>
+              <span id="gerenciar-total-perguntas">0 perguntas</span>
+            </div>
+            <div id="gerenciar-lista-perguntas" class="gerenciar-lista-perguntas"></div>
+          </section>
+
+          <p class="storage-note">Nessa versão de demonstração, os novos conteúdos ficam salvos neste navegador. Em uma versão final, esta mesma tela pode salvar no banco de dados para ficar disponível em qualquer computador.</p>
+        </div>
+      </dialog>
+    </section>
+
+    <section id="pagina-relatorios" class="page-section" hidden>
+      <header class="page-header">
+        <div>
+          <span class="eyebrow">Acompanhamento</span>
+          <h1>Relatórios</h1>
+          <p>Área reservada para os relatórios e resultados das atividades.</p>
+        </div>
+      </header>
+      <div class="card empty-page-card">
+        <h2 class="card-title">Relatórios em desenvolvimento</h2>
+        <p class="card-desc">O restante do painel continua funcionando normalmente.</p>
+      </div>
+    </section>
   </main>
 
   <script src="app.js"></script>

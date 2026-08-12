@@ -8,6 +8,85 @@ const leituraIdsRenderizadas = new Set();
 const PONTOS_FRASE_NO_LUGAR = 10;
 const PONTOS_DUPLA_EM_SEQUENCIA = 5;
 
+
+// conteúdo pedagógico inicial da aba "Contos e perguntas".
+// os conteúdos cadastrados pela professora são salvos no navegador (por enquanto).
+const STORAGE_KEY_CONTOS = 'led-contos-professora-v1';
+
+const CONTOS_PADRAO = [
+  {
+    id: 'sete-corvos',
+    titulo: 'Os Sete Corvos',
+    autor: 'Irmãos Grimm',
+    resumo: 'Uma menina parte em busca dos sete irmãos, transformados em corvos depois de uma maldição dita pelo pai em um momento de raiva.',
+    perguntas: [
+      {
+        tema: 'Causa e consequência',
+        trecho: 'O pai, angustiado com a demora dos filhos, conclui que eles ficaram brincando. Irritado, deseja que todos se transformem em corvos e, logo depois, vê sete corvos voando sobre a casa.',
+        pergunta: 'O que provocou a transformação dos sete irmãos em corvos?',
+        resposta: 'O pai, impaciente com a demora dos filhos, desejou com raiva que eles se transformassem em corvos. A fala acabou se tornando uma maldição.'
+      },
+      {
+        tema: 'Motivação da personagem',
+        trecho: 'Depois de descobrir que tinha sete irmãos e que o seu nascimento estava ligado ao acontecimento que os afastou da família, a menina passa a se culpar e decide sair de casa para encontrá-los.',
+        pergunta: 'Por que a menina decide procurar os irmãos mesmo sem saber onde eles estão?',
+        resposta: 'Porque se sente responsável pelo que aconteceu e quer salvá-los. A culpa e o desejo de reencontrar a família motivam a viagem.'
+      },
+      {
+        tema: 'Elementos fantásticos',
+        trecho: 'Na viagem, a menina encontra o sol e a lua, mas foge deles. As estrelas a recebem com bondade, e a Estrela D’Alva lhe entrega um pequeno osso que serviria para abrir a Montanha de Cristal.',
+        pergunta: 'Qual foi a importância da ajuda da Estrela D’Alva para a busca da menina?',
+        resposta: 'A Estrela D’Alva indica onde os irmãos estavam e entrega o objeto necessário para abrir a Montanha de Cristal, orientando a menina para a etapa seguinte da busca.'
+      },
+      {
+        tema: 'Características da personagem',
+        trecho: 'Ao chegar à Montanha de Cristal, a menina percebe que perdeu o objeto que abriria o portão. Mesmo assim, procura outra maneira de entrar e faz um grande sacrifício para conseguir abrir a passagem.',
+        pergunta: 'O que a atitude da menina diante do portão revela sobre sua personalidade?',
+        resposta: 'Revela determinação, coragem e disposição para se sacrificar pelos irmãos, pois ela não abandona a busca mesmo depois de perder a chave.'
+      },
+      {
+        tema: 'Objeto simbólico',
+        trecho: 'Enquanto espera os corvos, a menina prova um pouco da comida e da bebida deles e deixa cair no último copo o anel que havia levado de casa. Quando os irmãos chegam, um deles reconhece o anel dos pais.',
+        pergunta: 'Como o anel ajuda os irmãos a perceber que a irmã está por perto?',
+        resposta: 'O anel funciona como uma prova de ligação com a família. Ao reconhecê-lo, o sétimo corvo entende que a irmã pode estar ali e manifesta o desejo de encontrá-la.'
+      },
+      {
+        tema: 'Desfecho',
+        trecho: 'Quando um dos corvos deseja que a irmã esteja ali para que possam ser salvos, a menina sai de trás da porta. Nesse instante, os sete corvos recuperam a forma humana e todos voltam felizes para casa.',
+        pergunta: 'Como a presença da irmã resolve o conflito principal do conto?',
+        resposta: 'Ao encontrar os irmãos e se apresentar a eles, a irmã rompe a situação que os mantinha transformados em corvos. Eles recuperam a forma humana e a família pode se reunir novamente.'
+      }
+    ]
+  }
+];
+
+function clonarContosPadrao() {
+  return JSON.parse(JSON.stringify(CONTOS_PADRAO));
+}
+
+function carregarContosSalvos() {
+  try {
+    const salvos = JSON.parse(localStorage.getItem(STORAGE_KEY_CONTOS));
+    if (Array.isArray(salvos) && salvos.length > 0) return salvos;
+  } catch (error) {
+    console.warn('Não foi possível carregar os contos salvos.', error);
+  }
+
+  return clonarContosPadrao();
+}
+
+let CONTOS = carregarContosSalvos();
+let contoSelecionadoId = CONTOS[0]?.id || null;
+let perguntaSelecionadaIndex = 0;
+
+function salvarContosNoNavegador() {
+  try {
+    localStorage.setItem(STORAGE_KEY_CONTOS, JSON.stringify(CONTOS));
+  } catch (error) {
+    console.warn('Não foi possível salvar os contos no navegador.', error);
+  }
+}
+
 function startClock() {
   const el = document.getElementById('clock');
   if (!el) return;
@@ -167,7 +246,7 @@ function renderizarMesaDeMontagem(leituras) {
 
   mesa.innerHTML = '';
 
-  // Preserve the order in which readings were received (as returned by the API).
+  // preserve the order in which readings were received (as returned by the API).
   const leiturasOrdenadas = Array.isArray(leituras) ? [...leituras] : [];
 
   leiturasOrdenadas.forEach(item => {
@@ -248,8 +327,8 @@ async function carregarEquipe(nomeEquipe) {
     atualizarStatusRobo(`Palavra lida: "${ultimaLeitura.fragment || ultimaLeitura.fragmento || ''}"`, 'sucesso');
   }
 
-  // Não chama /api/placar aqui, porque placar é a rota mais pesada.
-  // O placar é atualizado ao validar e em intervalo separado.
+  // não chama /api/placar aqui, porque placar é a rota mais pesada.
+  // o placar é atualizado ao validar e em intervalo separado.
   renderizarBinarioDaFrase(atividadeFrases, avaliacao);
 }
 
@@ -361,7 +440,7 @@ async function simularLeitura() {
   atualizarStatusRobo(`Palavra lida: "${leitura.fragment || leitura.fragmento || ''}"`, 'sucesso');
   inputBinario.value = '';
 
-  // Atualiza a tela na hora, sem esperar outra chamada em /api/leituras e /api/placar.
+  // atualiza a tela na hora, sem esperar outra chamada em /api/leituras e /api/placar.
   if (leitura.id && !leituraIdsRenderizadas.has(leitura.id)) {
     leituraIdsRenderizadas.add(leitura.id);
     leiturasEquipeAtual.push(leitura);
@@ -414,7 +493,7 @@ async function validarSequencia() {
     feedback.style.color = 'var(--red)';
   }
 
-  // Atualiza a visualização da frase com a pontuação obtida na validação.
+  // atualiza a visualização da frase com a pontuação obtida na validação.
   renderizarBinarioDaFrase(atividadeFrases, resposta);
 
   await carregarPlacar();
@@ -450,7 +529,440 @@ function reiniciarAtividadeLocal() {
   atualizarResultado('Aguardando leitura dos blocos...', 'neutro');
 }
 
+function configurarNavegacao() {
+  document.querySelectorAll('.nav-links a[data-page]').forEach(link => {
+    link.addEventListener('click', event => {
+      event.preventDefault();
+      trocarPagina(link.dataset.page);
+    });
+  });
+
+  document.addEventListener('fullscreenchange', () => {
+    const palco = document.getElementById('presentation-stage');
+    if (!document.fullscreenElement && palco && !palco.classList.contains('presentation-fallback')) {
+      palco.hidden = true;
+      palco.setAttribute('aria-hidden', 'true');
+    }
+  });
+
+  document.addEventListener('keydown', event => {
+    const palco = document.getElementById('presentation-stage');
+    const apresentando = Boolean(document.fullscreenElement === palco || palco?.classList.contains('presentation-fallback'));
+    if (!apresentando) return;
+
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      proximaPergunta();
+    }
+
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      perguntaAnterior();
+    }
+
+    if (event.key === 'Escape' && palco?.classList.contains('presentation-fallback')) {
+      fecharApresentacao();
+    }
+  });
+}
+
+function trocarPagina(nomePagina) {
+  const paginas = {
+    dashboard: document.getElementById('pagina-dashboard'),
+    contos: document.getElementById('pagina-contos'),
+    relatorios: document.getElementById('pagina-relatorios')
+  };
+
+  Object.entries(paginas).forEach(([nome, elemento]) => {
+    if (!elemento) return;
+    const ativa = nome === nomePagina;
+    elemento.hidden = !ativa;
+    elemento.classList.toggle('active', ativa);
+  });
+
+  document.querySelectorAll('.nav-links a[data-page]').forEach(link => {
+    link.classList.toggle('active', link.dataset.page === nomePagina);
+  });
+
+  if (nomePagina === 'contos') renderizarContos();
+}
+
+function obterContoSelecionado() {
+  return CONTOS.find(conto => conto.id === contoSelecionadoId) || CONTOS[0] || null;
+}
+
+function popularSelectContos() {
+  const select = document.getElementById('conto-select');
+  const gerenciarSelect = document.getElementById('gerenciar-conto-select');
+
+  [select, gerenciarSelect].forEach(elemento => {
+    if (!elemento) return;
+    const valorAnterior = elemento.value;
+    elemento.innerHTML = '';
+
+    CONTOS.forEach(conto => {
+      const option = document.createElement('option');
+      option.value = conto.id;
+      option.textContent = conto.titulo;
+      elemento.appendChild(option);
+    });
+
+    const valorDesejado = CONTOS.some(conto => conto.id === valorAnterior)
+      ? valorAnterior
+      : contoSelecionadoId;
+
+    if (valorDesejado) elemento.value = valorDesejado;
+  });
+}
+
+function renderizarContos() {
+  popularSelectContos();
+
+  const conto = obterContoSelecionado();
+  if (!conto) return;
+
+  const perguntas = Array.isArray(conto.perguntas) ? conto.perguntas : [];
+  if (perguntaSelecionadaIndex >= perguntas.length) perguntaSelecionadaIndex = 0;
+
+  const item = perguntas[perguntaSelecionadaIndex] || null;
+  const titulo = document.getElementById('conto-titulo');
+  const autor = document.getElementById('conto-autor');
+  const resumo = document.getElementById('conto-resumo');
+  const trecho = document.getElementById('conto-trecho');
+  const pergunta = document.getElementById('conto-pergunta');
+  const resposta = document.getElementById('resposta-texto');
+  const indicador = document.getElementById('pergunta-indicador');
+  const tema = document.getElementById('pergunta-tema');
+  const respostaBox = document.getElementById('resposta-esperada');
+  const btnResposta = document.getElementById('btn-resposta');
+
+  if (titulo) titulo.textContent = conto.titulo;
+  if (autor) autor.textContent = conto.autor || 'Autor não informado';
+  if (resumo) {
+    resumo.textContent = conto.resumo || '';
+    resumo.hidden = !conto.resumo;
+  }
+
+  if (!item) {
+    if (trecho) trecho.textContent = 'Este conto ainda não possui trechos e perguntas cadastrados.';
+    if (pergunta) pergunta.textContent = 'Abra “Gerenciar conteúdo” para adicionar a primeira pergunta.';
+    if (resposta) resposta.textContent = '';
+    if (indicador) indicador.textContent = 'Nenhuma pergunta cadastrada';
+    if (tema) tema.textContent = 'Sem perguntas';
+  } else {
+    if (trecho) trecho.textContent = item.trecho;
+    if (pergunta) pergunta.textContent = item.pergunta;
+    if (resposta) resposta.textContent = item.resposta || 'Nenhuma resposta esperada foi cadastrada.';
+    if (indicador) indicador.textContent = `Pergunta ${perguntaSelecionadaIndex + 1} de ${perguntas.length}`;
+    if (tema) tema.textContent = item.tema || 'Compreensão';
+  }
+
+  if (respostaBox) respostaBox.hidden = true;
+  if (btnResposta) btnResposta.textContent = 'Mostrar resposta esperada';
+
+  atualizarApresentacao();
+}
+
+function selecionarConto(id) {
+  if (!CONTOS.some(conto => conto.id === id)) return;
+  contoSelecionadoId = id;
+  perguntaSelecionadaIndex = 0;
+  renderizarContos();
+
+  const gerenciarSelect = document.getElementById('gerenciar-conto-select');
+  if (gerenciarSelect) gerenciarSelect.value = id;
+  renderizarPerguntasGerenciador();
+}
+
+function proximaPergunta() {
+  const conto = obterContoSelecionado();
+  if (!conto || !conto.perguntas?.length) return;
+
+  perguntaSelecionadaIndex = (perguntaSelecionadaIndex + 1) % conto.perguntas.length;
+  renderizarContos();
+}
+
+function perguntaAnterior() {
+  const conto = obterContoSelecionado();
+  if (!conto || !conto.perguntas?.length) return;
+
+  perguntaSelecionadaIndex = (perguntaSelecionadaIndex - 1 + conto.perguntas.length) % conto.perguntas.length;
+  renderizarContos();
+}
+
+function alternarResposta() {
+  const box = document.getElementById('resposta-esperada');
+  const botao = document.getElementById('btn-resposta');
+  if (!box || !botao) return;
+
+  box.hidden = !box.hidden;
+  botao.textContent = box.hidden ? 'Mostrar resposta esperada' : 'Ocultar resposta esperada';
+}
+
+function atualizarApresentacao() {
+  const conto = obterContoSelecionado();
+  const item = conto?.perguntas?.[perguntaSelecionadaIndex] || null;
+
+  const titulo = document.getElementById('presentation-title');
+  const autor = document.getElementById('presentation-author');
+  const trecho = document.getElementById('presentation-trecho');
+  const pergunta = document.getElementById('presentation-pergunta');
+  const progresso = document.getElementById('presentation-progress');
+
+  if (titulo) titulo.textContent = conto?.titulo || 'Conto';
+  if (autor) autor.textContent = conto?.autor || 'Autor não informado';
+  if (trecho) trecho.textContent = item?.trecho || 'Nenhum trecho cadastrado para este conto.';
+  if (pergunta) pergunta.textContent = item?.pergunta || 'Nenhuma pergunta cadastrada.';
+  if (progresso) {
+    progresso.textContent = item
+      ? `Pergunta ${perguntaSelecionadaIndex + 1} de ${conto.perguntas.length}`
+      : 'Sem perguntas cadastradas';
+  }
+}
+
+async function abrirApresentacao() {
+  const palco = document.getElementById('presentation-stage');
+  if (!palco) return;
+
+  atualizarApresentacao();
+  palco.hidden = false;
+  palco.setAttribute('aria-hidden', 'false');
+
+  try {
+    if (palco.requestFullscreen) {
+      await palco.requestFullscreen();
+    } else {
+      palco.classList.add('presentation-fallback');
+      document.body.classList.add('presentation-open');
+    }
+  } catch (error) {
+    palco.classList.add('presentation-fallback');
+    document.body.classList.add('presentation-open');
+  }
+}
+
+async function fecharApresentacao() {
+  const palco = document.getElementById('presentation-stage');
+  if (!palco) return;
+
+  palco.classList.remove('presentation-fallback');
+  document.body.classList.remove('presentation-open');
+
+  if (document.fullscreenElement) {
+    try {
+      await document.exitFullscreen();
+    } catch (error) {
+      console.warn('Não foi possível sair da tela cheia.', error);
+    }
+  }
+
+  palco.hidden = true;
+  palco.setAttribute('aria-hidden', 'true');
+}
+
+function abrirGerenciadorConteudo() {
+  const dialog = document.getElementById('conteudo-dialog');
+  if (!dialog) return;
+
+  popularSelectContos();
+  const select = document.getElementById('gerenciar-conto-select');
+  if (select) select.value = contoSelecionadoId;
+  cancelarEdicaoPergunta();
+  renderizarPerguntasGerenciador();
+
+  if (typeof dialog.showModal === 'function') dialog.showModal();
+  else dialog.setAttribute('open', '');
+}
+
+function fecharGerenciadorConteudo() {
+  const dialog = document.getElementById('conteudo-dialog');
+  if (!dialog) return;
+
+  if (typeof dialog.close === 'function') dialog.close();
+  else dialog.removeAttribute('open');
+}
+
+function criarIdConto(titulo) {
+  const base = String(titulo || 'conto')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'conto';
+
+  return `${base}-${Date.now()}`;
+}
+
+function adicionarConto(event) {
+  event.preventDefault();
+
+  const tituloInput = document.getElementById('novo-conto-titulo');
+  const autorInput = document.getElementById('novo-conto-autor');
+  const resumoInput = document.getElementById('novo-conto-resumo');
+  const titulo = tituloInput?.value.trim();
+
+  if (!titulo) return;
+
+  const novoConto = {
+    id: criarIdConto(titulo),
+    titulo,
+    autor: autorInput?.value.trim() || 'Autor não informado',
+    resumo: resumoInput?.value.trim() || '',
+    perguntas: []
+  };
+
+  CONTOS.push(novoConto);
+  contoSelecionadoId = novoConto.id;
+  perguntaSelecionadaIndex = 0;
+  salvarContosNoNavegador();
+  renderizarContos();
+  popularSelectContos();
+
+  const gerenciarSelect = document.getElementById('gerenciar-conto-select');
+  if (gerenciarSelect) gerenciarSelect.value = novoConto.id;
+
+  event.target.reset();
+  renderizarPerguntasGerenciador();
+}
+
+function salvarPerguntaGerenciada(event) {
+  event.preventDefault();
+
+  const select = document.getElementById('gerenciar-conto-select');
+  const conto = CONTOS.find(item => item.id === select?.value);
+  if (!conto) return;
+
+  const trecho = document.getElementById('gerenciar-trecho')?.value.trim();
+  const pergunta = document.getElementById('gerenciar-pergunta')?.value.trim();
+  if (!trecho || !pergunta) return;
+
+  const novoItem = {
+    tema: document.getElementById('gerenciar-tema')?.value.trim() || 'Compreensão',
+    trecho,
+    pergunta,
+    resposta: document.getElementById('gerenciar-resposta')?.value.trim() || ''
+  };
+
+  const indiceInput = document.getElementById('gerenciar-edicao-index');
+  const indice = indiceInput?.value === '' ? null : Number(indiceInput.value);
+
+  if (Number.isInteger(indice) && indice >= 0 && indice < conto.perguntas.length) {
+    conto.perguntas[indice] = novoItem;
+    perguntaSelecionadaIndex = indice;
+  } else {
+    conto.perguntas.push(novoItem);
+    perguntaSelecionadaIndex = conto.perguntas.length - 1;
+  }
+
+  contoSelecionadoId = conto.id;
+  salvarContosNoNavegador();
+  cancelarEdicaoPergunta();
+  renderizarContos();
+  renderizarPerguntasGerenciador();
+}
+
+function cancelarEdicaoPergunta() {
+  const campos = ['gerenciar-tema', 'gerenciar-trecho', 'gerenciar-pergunta', 'gerenciar-resposta'];
+  campos.forEach(id => {
+    const elemento = document.getElementById(id);
+    if (elemento) elemento.value = '';
+  });
+
+  const indice = document.getElementById('gerenciar-edicao-index');
+  const cancelar = document.getElementById('btn-cancelar-edicao');
+  const salvar = document.getElementById('btn-salvar-pergunta');
+
+  if (indice) indice.value = '';
+  if (cancelar) cancelar.hidden = true;
+  if (salvar) salvar.textContent = 'Adicionar pergunta';
+}
+
+function editarPerguntaGerenciada(indice) {
+  const select = document.getElementById('gerenciar-conto-select');
+  const conto = CONTOS.find(item => item.id === select?.value);
+  const item = conto?.perguntas?.[indice];
+  if (!item) return;
+
+  document.getElementById('gerenciar-tema').value = item.tema || '';
+  document.getElementById('gerenciar-trecho').value = item.trecho || '';
+  document.getElementById('gerenciar-pergunta').value = item.pergunta || '';
+  document.getElementById('gerenciar-resposta').value = item.resposta || '';
+  document.getElementById('gerenciar-edicao-index').value = String(indice);
+  document.getElementById('btn-cancelar-edicao').hidden = false;
+  document.getElementById('btn-salvar-pergunta').textContent = 'Salvar alterações';
+  document.getElementById('gerenciar-trecho').focus();
+}
+
+function excluirPerguntaGerenciada(indice) {
+  const select = document.getElementById('gerenciar-conto-select');
+  const conto = CONTOS.find(item => item.id === select?.value);
+  if (!conto?.perguntas?.[indice]) return;
+
+  const confirmar = window.confirm('Excluir esta pergunta e o trecho associado?');
+  if (!confirmar) return;
+
+  conto.perguntas.splice(indice, 1);
+  perguntaSelecionadaIndex = Math.min(perguntaSelecionadaIndex, Math.max(conto.perguntas.length - 1, 0));
+  contoSelecionadoId = conto.id;
+  salvarContosNoNavegador();
+  cancelarEdicaoPergunta();
+  renderizarContos();
+  renderizarPerguntasGerenciador();
+}
+
+function renderizarPerguntasGerenciador() {
+  const select = document.getElementById('gerenciar-conto-select');
+  const lista = document.getElementById('gerenciar-lista-perguntas');
+  const total = document.getElementById('gerenciar-total-perguntas');
+  if (!lista || !select) return;
+
+  const conto = CONTOS.find(item => item.id === select.value) || obterContoSelecionado();
+  const perguntas = Array.isArray(conto?.perguntas) ? conto.perguntas : [];
+
+  if (total) total.textContent = `${perguntas.length} ${perguntas.length === 1 ? 'pergunta' : 'perguntas'}`;
+  lista.innerHTML = '';
+
+  if (perguntas.length === 0) {
+    const vazio = document.createElement('div');
+    vazio.className = 'gerenciar-empty';
+    vazio.textContent = 'Nenhuma pergunta cadastrada para este conto.';
+    lista.appendChild(vazio);
+    return;
+  }
+
+  perguntas.forEach((item, indice) => {
+    const linha = document.createElement('article');
+    linha.className = 'gerenciar-pergunta-item';
+
+    const texto = document.createElement('div');
+    const tema = document.createElement('span');
+    const pergunta = document.createElement('strong');
+    tema.textContent = item.tema || 'Compreensão';
+    pergunta.textContent = item.pergunta;
+    texto.append(tema, pergunta);
+
+    const acoes = document.createElement('div');
+    acoes.className = 'gerenciar-item-actions';
+
+    const editar = document.createElement('button');
+    editar.type = 'button';
+    editar.textContent = 'Editar';
+    editar.addEventListener('click', () => editarPerguntaGerenciada(indice));
+
+    const excluir = document.createElement('button');
+    excluir.type = 'button';
+    excluir.textContent = 'Excluir';
+    excluir.addEventListener('click', () => excluirPerguntaGerenciada(indice));
+
+    acoes.append(editar, excluir);
+    linha.append(texto, acoes);
+    lista.appendChild(linha);
+  });
+}
+
 window.onload = async () => {
+  configurarNavegacao();
+  renderizarContos();
   startClock();
   startConnectionMonitor();
 
@@ -479,7 +991,7 @@ window.onload = async () => {
   await carregarEquipe(equipeAtual);
   await carregarPlacar();
 
-  // Evita chuva de requisições. Se uma ainda estiver rodando, a próxima é ignorada.
+  // evita chuva de requisições. se uma ainda estiver rodando, a próxima é ignorada.
   setInterval(fetchQRReading, 3000);
   setInterval(carregarPlacar, 15000);
 };
