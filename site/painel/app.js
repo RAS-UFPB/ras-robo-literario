@@ -3,6 +3,8 @@ let atividadeFrases = [];
 let equipeAtual = 'Equipe 1';
 let leiturasEquipeAtual = [];
 let lastQRId = null;
+let atividadeIdParaFinalizacaoEsp = null;
+let pedidoFinalizacaoEmCurso = false;
 let qrRequestEmAndamento = false;
 let consultaEquipeNumero = 0;
 let tipoQrSelecionado = 'inicio';
@@ -423,6 +425,8 @@ function renderizarBinarioDaFrase(frases, avaliacao = null) {
   const status = document.getElementById('status-frase-alvo');
   const detalhes = document.getElementById('detalhes-atividade-ativa');
   const encerrar = document.getElementById('dashboard-encerrar-atividade');
+  const finalizar = document.getElementById('dashboard-finalizar-leitura');
+  const statusFinalizacao = document.getElementById('dashboard-status-finalizacao');
   if (!area || !status) return;
 
   const blocos = Array.isArray(frases) ? [...frases].sort((a, b) => a.indice - b.indice) : [];
@@ -432,6 +436,8 @@ function renderizarBinarioDaFrase(frases, avaliacao = null) {
     status.style.color = 'var(--text-muted)';
     if (detalhes) { detalhes.hidden = true; detalhes.open = false; }
     if (encerrar) encerrar.hidden = true;
+    if (finalizar) finalizar.hidden = true;
+    if (statusFinalizacao) statusFinalizacao.hidden = true;
     return;
   }
 
@@ -443,6 +449,8 @@ function renderizarBinarioDaFrase(frases, avaliacao = null) {
   status.style.color = 'var(--accent-dark)';
   if (detalhes) detalhes.hidden = false;
   if (encerrar) encerrar.hidden = false;
+  if (finalizar) finalizar.hidden = false;
+  if (statusFinalizacao) statusFinalizacao.hidden = false;
   for (const item of blocos) {
     const chip = document.createElement('span');
     chip.className = 'binary-chip';
@@ -612,6 +620,7 @@ async function carregarEquipe(nomeEquipe) {
 
 async function carregarAtividadeAtual() {
   const dados = await apiFetch('/api/atividade');
+  atividadeIdParaFinalizacaoEsp = Number(dados?.atividadeId) || null;
   mostrarQrInicio(dados?.qrInicio, dados?.atividadeId);
   if (!dados || !Array.isArray(dados.frases) || dados.frases.length === 0) {
     fraseCorreta = [];
@@ -625,6 +634,61 @@ async function carregarAtividadeAtual() {
   atividadeFrases = frasesOrdenadas;
   fraseCorreta = frasesOrdenadas.map(item => String(item.texto || '').toLowerCase());
   renderizarBinarioDaFrase(atividadeFrases);
+  void atualizarStatusFinalizacaoEsp();
+}
+
+// Este status é consultado no backend, nunca diretamente com a chave privada do Supabase.
+async function atualizarStatusFinalizacaoEsp() {
+  const id = atividadeIdParaFinalizacaoEsp;
+  const status = document.getElementById('dashboard-status-finalizacao');
+  const botao = document.getElementById('dashboard-finalizar-leitura');
+  if (!id || !status || !botao || status.hidden) return;
+  try {
+    const resposta = await fetch(`/api/esp/finalizacao/status?atividadeId=${id}`, { cache: 'no-store' });
+    if (!resposta.ok) throw new Error('Status indisponível');
+    const dados = await resposta.json();
+    if (atividadeIdParaFinalizacaoEsp !== id) return;
+    if (dados.importado) {
+      status.textContent = 'Leitura recebida e importada! Confira a mesa e a pontuação.';
+      botao.disabled = true;
+      botao.textContent = 'Leitura finalizada';
+    } else if (dados.recebido) {
+      status.textContent = 'A ESP enviou a sessão. Aguardando importação pelo site…';
+      botao.disabled = true;
+      botao.textContent = 'Aguardando importação';
+    } else if (dados.solicitado) {
+      status.textContent = 'Encerramento solicitado. Mantenha a ESP ligada e conectada à Internet.';
+      botao.disabled = true;
+      botao.textContent = 'Aguardando robô';
+    } else {
+      status.textContent = 'Depois que todas as equipes lerem suas cartas, finalize a leitura por aqui.';
+      botao.disabled = pedidoFinalizacaoEmCurso;
+      botao.textContent = 'Finalizar leitura do robô';
+    }
+  } catch {
+    status.textContent = 'Não foi possível consultar a finalização. Verifique a conexão e a tabela comandos_esp.';
+    botao.disabled = pedidoFinalizacaoEmCurso;
+    botao.textContent = 'Finalizar leitura do robô';
+  }
+}
+
+async function finalizarLeituraEsp() {
+  if (!atividadeIdParaFinalizacaoEsp || pedidoFinalizacaoEmCurso) return;
+  if (!window.confirm('Finalizar a leitura das cartas no robô? A ESP enviará a sessão completa quando estiver conectada.')) return;
+  const botao = document.getElementById('dashboard-finalizar-leitura');
+  const status = document.getElementById('dashboard-status-finalizacao');
+  pedidoFinalizacaoEmCurso = true;
+  if (botao) botao.disabled = true;
+  if (status) status.textContent = 'Registrando pedido de finalização…';
+  try {
+    const resposta = await apiFetch('/api/esp/finalizar-leitura', { method: 'POST' });
+    if (status) status.textContent = resposta
+      ? 'Pedido enviado! Aguardando a ESP consultar o Supabase.'
+      : 'Não foi possível solicitar a finalização. Verifique o servidor e tente novamente.';
+  } finally {
+    pedidoFinalizacaoEmCurso = false;
+    await atualizarStatusFinalizacaoEsp();
+  }
 }
 
 async function encerrarAtividadeAtual() {
@@ -1869,5 +1933,6 @@ window.onload = async () => {
   await carregarPlacar();
 
   setInterval(fetchQRReading, 2000);
+  setInterval(atualizarStatusFinalizacaoEsp, 5000);
   setInterval(carregarPlacar, 15000);
 };

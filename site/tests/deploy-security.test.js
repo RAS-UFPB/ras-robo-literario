@@ -49,6 +49,7 @@ test('servidor HTTP: arquivos, autenticação, escrita e PDF com dados simulados
   const json = { 'Content-Type': 'application/json' };
   const envios = [
     ['/api/atividade', 'POST'], ['/api/atividade/encerrar', 'POST'],
+    ['/api/esp/finalizar-leitura', 'POST'],
     ['/api/contos', 'POST'], ['/api/perguntas', 'POST'], ['/api/perguntas/1', 'PUT'],
     ['/api/perguntas/1', 'DELETE'], ['/api/contos/qualquer/iniciar-trechos', 'POST'],
     ['/api/qr', 'POST'], ['/api/validar', 'POST'], ['/api/reset-equipe', 'POST'],
@@ -76,11 +77,27 @@ test('servidor HTTP: arquivos, autenticação, escrita e PDF com dados simulados
   const { conto: criado } = await conto.json();
   assert.equal((await requisicao('/api/contos')).status, 200);
 
+  const semAtividade = await requisicao('/api/esp/finalizar-leitura', { method: 'POST', headers: autorizado });
+  assert.equal(semAtividade.status, 409, 'Não deve enviar comando sem atividade ativa');
   const atividade = await requisicao('/api/atividade', { method: 'POST', headers: autorizado,
     body: JSON.stringify({ textoAlvo: 'Primeiro | Segundo' }) });
   assert.equal(atividade.status, 201);
   const criada = await atividade.json();
   assert.equal(criada.frases.length, 2);
+  const statusAntes = await requisicao(`/api/esp/finalizacao/status?atividadeId=${criada.atividadeId}`);
+  assert.equal(statusAntes.status, 200);
+  assert.equal((await statusAntes.json()).solicitado, false);
+  const finalizar = await requisicao('/api/esp/finalizar-leitura', { method: 'POST', headers: autorizado });
+  assert.equal(finalizar.status, 202);
+  assert.equal((await finalizar.json()).sessaoId, `ATV-${criada.atividadeId}`);
+  const statusDepois = await requisicao(`/api/esp/finalizacao/status?atividadeId=${criada.atividadeId}`);
+  assert.equal(statusDepois.status, 200);
+  assert.deepEqual(await statusDepois.json(), {
+    sessaoId: `ATV-${criada.atividadeId}`, solicitado: true, recebido: false, importado: false
+  });
+  assert.equal((await requisicao('/api/esp/finalizacao/status?atividadeId=nao-e-numero')).status, 400);
+  // Mesmo pedido deve ser idempotente: não cria novo comando.
+  assert.equal((await requisicao('/api/esp/finalizar-leitura', { method: 'POST', headers: autorizado })).status, 202);
 
   const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n');
   const caminho = `/api/contos/${encodeURIComponent(criado.id)}/pdf`;

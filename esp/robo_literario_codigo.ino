@@ -35,6 +35,7 @@ Evita que a câmera registre o mesmo código múltiplas vezes enquanto o aluno m
 */
 #define DEBOUNCE_MS   2000
 #define RETRY_HTTP_MS 10000  // intervalo para reenviar uma sessão pendente
+#define CONSULTA_FIM_MS 5000 // frequência de consulta ao Supabase enquanto há leitura
 
 // Caminho do arquivo de persistência no LittleFS
 #define FLASH_FILE    "/sessao.json"
@@ -114,6 +115,7 @@ Estado        estado = AGUARD_INICIO;  // estado atual da máquina
 uint32_t      ultimoQRHash = 0;     // debounce sem guardar credenciais na RAM
 unsigned long ultimaLeitura = 0;       // timestamp (ms) da última leitura válida
 unsigned long ultimaTentativaEnvio = 0;
+unsigned long ultimaConsultaFim = 0;
 bool          envioPendente = false;   // impede sobrescrever uma sessão ainda não enviada
 #ifndef ROBO_SIMULADOR_WOKWI
 struct quirc* qr = NULL;
@@ -124,6 +126,7 @@ bool qrVirtualPendente = false;
 String linhaSerialVirtual;
 bool wifiForcadoOfflineVirtual = false;
 bool postSimuladoLiberado = false; // padrão: POST fictício FALHA para preservar sessões
+bool comandoFimSimulado = false; // imita resposta do Supabase, sem acesso externo
 #endif
 // O Wi-Fi é apenas transporte; a câmera e os QRs continuam operando offline.
 String wifiSSID, wifiSenha;
@@ -167,6 +170,7 @@ bool   processarQR(const String& payload);
 bool   salvarEmFlash();
 bool   carregarDoFlash();
 bool   enviarHTTP();
+void   consultarComandoFinalizacao();
 void   resetarSessao();
 void   feedbackOK();
 void   feedbackERRO();
@@ -274,6 +278,11 @@ void loop() {
     return;
   }
 
+  // O botão do site grava um comando no Supabase; esta consulta só existe
+  // durante sessões iniciadas. O QR de fim antigo permanece como contingência.
+  consultarComandoFinalizacao();
+  if (envioPendente) { delay(20); return; }
+
   if (lerQRCode(payload)) {
     // QRs de autorização só são avaliados entre atividades, jamais durante a leitura.
     // O PIN nunca é exibido no Serial e a falha não altera a sessão atual.
@@ -331,7 +340,7 @@ if(!qr) return false;
 
   // 2. Copia buffer do frame para o quirc e processa
   uint8_t* buf = quirc_begin(qr, nullptr, nullptr);
-
+  
   if (buf != nullptr) {
     // Evita estourar o buffer do quirc se a câmera mandar uma imagem maior do que o esperado
     size_t tamanho_esperado = fb->width * fb->height;
@@ -741,6 +750,64 @@ bool carregarDoFlash() {
 }
 
 /*
+→ consultarComandoFinalizacao
+
+Busca apenas o pedido da sessão em andamento. Não envia chaves privadas,
+não solicita comandos ao Render e não encerra sessões com ID diferente.
+*/
+void consultarComandoFinalizacao() {
+  if (estado != LENDO_CARTAS && estado != AGUARD_EQUIPE) return;
+  if (envioPendente || modoConfiguracao) return;
+  bool temCartaLida = false;
+  for (uint8_t r = 0; r < sessao.numRodadas; r++) {
+    if (sessao.rodadas[r].numCartas > 0) { temCartaLida = true; break; }
+  }
+  if (!temCartaLida) return; // evita finalizar sessões vazias antes da leitura.
+  if (millis() - ultimaConsultaFim < CONSULTA_FIM_MS) return;
+  ultimaConsultaFim = millis();
+#ifdef ROBO_SIMULADOR_WOKWI
+  if (comandoFimSimulado) {
+    comandoFimSimulado = false;
+    Serial.println("[SIM][COMANDO] Supabase fictício retornou fim.");
+    processarQR("{\"t\":\"fim\"}");
+  }
+#else
+  if (WiFi.status() != WL_CONNECTED) return;
+  String sid(sessao.id);
+  if (!sid.startsWith("ATV-") || sid.length() <= 4) return;
+  for (size_t i = 4; i < sid.length(); i++) {
+    if (!isDigit(sid[i])) return; // ID da sessão nunca entra numa consulta sem validação.
+  }
+  String endpoint(SUPABASE_REST_URL);
+  if (!endpoint.endsWith("/sessoes_esp")) return;
+  endpoint.remove(endpoint.length() - 11); // remove "sessoes_esp" e mantém a barra
+  endpoint += "comandos_esp?select=comando&sessao_id=eq." + sid + "&limit=1";
+  WiFiClientSecure client;
+  client.setInsecure(); // mesmo modo TLS do POST atual; ver nota no guia
+  HTTPClient http;
+  if (!http.begin(client, endpoint)) return;
+  http.setConnectTimeout(3000);
+  http.setTimeout(4500);
+  http.addHeader("apikey", SUPABASE_ANON_KEY);
+  http.addHeader("Authorization", "Bearer " + String(SUPABASE_ANON_KEY));
+  const int code = http.GET();
+  String resposta = code == 200 ? http.getString() : "";
+  http.end();
+  if (code != 200) {
+    Serial.printf("[COMANDO] Consulta de finalização falhou (%d). Tentará novamente.\n", code);
+    return;
+  }
+  StaticJsonDocument<256> doc;
+  if (deserializeJson(doc, resposta) || !doc.is<JsonArray>() || doc.size() == 0) return;
+  const char *comando = doc[0]["comando"] | "";
+  if (strcmp(comando, "fim") == 0) {
+    Serial.println("[COMANDO] Pedido de finalização recebido do Supabase.");
+    processarQR("{\"t\":\"fim\"}"); // reutiliza a persistência e o POST do cenário A
+  }
+#endif
+}
+
+/*
 → enviarHTTP
 
 Serializa a sessão e faz um HTTP POST direto na API REST do Supabase.
@@ -1117,7 +1184,8 @@ void imprimirAjudaVirtual() {
   Serial.println("[SIM] SIM:QR:{\"t\":\"inicio\",\"sid\":\"ATV-23\"}");
   Serial.println("[SIM] SIM:QR:{\"t\":\"equipe\",\"eq\":1}");
   Serial.println("[SIM] SIM:QR:0000   SIM:QR:0001   SIM:QR:0010");
-  Serial.println("[SIM] SIM:QR:{\"t\":\"fim\"}");
+  Serial.println("[SIM] SIM:QR:{\"t\":\"fim\"} (contingência)");
+  Serial.println("[SIM] SIM:COMANDO:FIM (simula o botão do site, sem rede externa)");
   Serial.println("[SIM] SIM:ESTADO | SIM:REINICIAR (sem botão ou atalho de configuração)");
   Serial.println("[SIM] SIM:WIFI:OFF | SIM:WIFI:ON");
   Serial.println("[SIM] SIM:HTTP:FALHA | SIM:HTTP:OK (POST fictício apenas)");
@@ -1134,6 +1202,9 @@ void executarComandoVirtual(const String& comando) {
     qrVirtual = textoQR;
     qrVirtualPendente = true;
     Serial.println("[SIM] QR entregue ao leitor virtual (conteúdo ocultado).");
+  } else if (comando == "SIM:COMANDO:FIM") {
+    comandoFimSimulado = true;
+    Serial.println("[SIM] Finalização remota fictícia registrada; aguardando consulta periódica.");
   } else if (comando == "SIM:ESTADO") {
     Serial.printf("[SIM] Estado atividade: %d | rodadas: %d | pendente: %s | config: %s\n",
                   (int)estado, sessao.numRodadas, envioPendente ? "SIM" : "NÃO", modoConfiguracao ? "SIM" : "NÃO");
@@ -1307,7 +1378,7 @@ void iniciarCamera() {
       digitalWrite(PIN_LED_ERR, LOW);  delay(300);
     }
   }
-  
+    
     Serial.println("[CAM] Câmera iniciada com sucesso.");
 
     sensor_t * s = esp_camera_sensor_get();
@@ -1318,7 +1389,7 @@ void iniciarCamera() {
       s->set_whitebal(s, 1);       // Habilita balanço de branco automático
       s->set_awb_gain(s, 1);       // Ganho automático de branco
       s->set_exposure_ctrl(s, 1);  // Controle automático de exposição
-
+      
       s->set_bpc(s, 1);            // Ativa correção de pixels pretos (reduz ruído)
       s->set_wpc(s, 1);            // Ativa correção de pixels brancos (reduz ruído)
       s->set_sharpness(s, 2);    // Força a nitidez no máximo (escala de -2 a 2)
@@ -1330,7 +1401,7 @@ void iniciarCamera() {
       s->set_aec2(s, 1);       // Processamento avançado de Exposição Automática
       s->set_ae_level(s, 0);   // Ajuste fino de luz alvo (-2 a 2). Mude para 1 ou 2 se a sala for muito escura.
     }
-
+  
 
 }
 

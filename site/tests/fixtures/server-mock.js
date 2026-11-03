@@ -11,6 +11,8 @@ const cache = (modulo, exports) => {
 };
 
 let idAtividade = 20;
+let atividadeAtiva = null;
+const comandosEsp = new Map();
 let idConto = 0;
 const contos = new Map();
 const arquivos = new Map();
@@ -28,10 +30,15 @@ const prisma = {
   },
   trechoEmbaralhar: { async findMany() { return []; } },
   atividade: {
-    async findFirst() { return null; },
-    async updateMany() { return { count: 0 }; },
-    async create({ data }) { return { id: ++idAtividade, ...data, frases: data.frases.create.map((f, i) => ({ id: i + 1, ...f })) }; }
+    async findFirst() { return atividadeAtiva; },
+    async updateMany() { atividadeAtiva = null; return { count: 1 }; },
+    async create({ data }) {
+      atividadeAtiva = { id: ++idAtividade, ...data, frases: data.frases.create.map((f, i) => ({ id: i + 1, ...f })) };
+      return atividadeAtiva;
+    }
   },
+  sessaoEsp: { async findFirst() { return null; } },
+  importacaoSessaoEsp: { async findUnique() { return null; } },
   async $transaction(fn) { return fn(prisma); },
   async $disconnect() {}
 };
@@ -51,5 +58,35 @@ const storage = {
   }
 };
 cache('prisma.js', { prisma });
-cache('supabase.js', { supabase: { storage } });
+const comandos = {
+  async upsert(linha, { onConflict }) {
+    if (onConflict !== 'sessao_id') throw new Error('Conflito inesperado');
+    comandosEsp.set(linha.sessao_id, linha);
+    return { error: null };
+  },
+  select() {
+    let sid = '';
+    return {
+      eq(campo, valor) {
+        if (campo !== 'sessao_id') throw new Error('Filtro inesperado');
+        sid = valor;
+        return {
+          gt(campoData, atual) {
+            if (campoData !== 'expira_em') throw new Error('Coluna inesperada');
+            return {
+              async maybeSingle() {
+                const registro = comandosEsp.get(sid);
+                return { data: registro && registro.expira_em > atual ? registro : null, error: null };
+              }
+            };
+          }
+        };
+      }
+    };
+  }
+};
+cache('supabase.js', { supabase: { storage, from(tabela) {
+  if (tabela !== 'comandos_esp') throw new Error('Tabela de comando inesperada');
+  return comandos;
+} } });
 require('../../backend/server');

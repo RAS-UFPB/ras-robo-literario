@@ -683,6 +683,46 @@ const server = http.createServer(async (req, res) => {
       }, startedAt);
     }
 
+    // A professora solicita o encerramento sem exibir QR de fim. O pedido
+    // persiste no Supabase; a ESP o consulta e envia a sessão no cenário A.
+    if (url.pathname === '/api/esp/finalizar-leitura' && req.method === 'POST') {
+      const atividade = await getAtividadeAtivaCached();
+      if (!atividade) return sendJson(res, 409, { error: 'Não há atividade ativa para finalizar.' }, startedAt);
+      const sessaoId = `ATV-${atividade.id}`;
+      const { supabase } = require('./supabase');
+      const { error } = await supabase.from('comandos_esp').upsert({
+        sessao_id: sessaoId,
+        comando: 'fim',
+        expira_em: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      }, { onConflict: 'sessao_id' });
+      if (error) {
+        console.error('[ESP] Falha ao registrar comando de fim:', error.code || error.name || 'Erro Supabase');
+        return sendJson(res, 503, { error: 'Não foi possível solicitar o fim. Confira se a tabela comandos_esp foi criada.' }, startedAt);
+      }
+      return sendJson(res, 202, { mensagem: 'Pedido de finalização registrado. Aguardando a ESP.', sessaoId }, startedAt);
+    }
+
+    if (url.pathname === '/api/esp/finalizacao/status' && req.method === 'GET') {
+      const atividadeId = Number(url.searchParams.get('atividadeId'));
+      if (!Number.isSafeInteger(atividadeId) || atividadeId < 1) {
+        return sendJson(res, 400, { error: 'Identificador da atividade inválido.' }, startedAt);
+      }
+      const sessaoId = `ATV-${atividadeId}`;
+      const { supabase } = require('./supabase');
+      const [{ data: comando, error }, sessao, importacao] = await Promise.all([
+        supabase.from('comandos_esp').select('sessao_id').eq('sessao_id', sessaoId).gt('expira_em', new Date().toISOString()).maybeSingle(),
+        prisma.sessaoEsp.findFirst({ where: { sessaoId }, select: { id: true } }),
+        prisma.importacaoSessaoEsp.findUnique({ where: { sessaoId }, select: { sessaoId: true } })
+      ]);
+      if (error) return sendJson(res, 503, { error: 'Status indisponível. Confira a tabela comandos_esp.' }, startedAt);
+      return sendJson(res, 200, {
+        sessaoId,
+        solicitado: Boolean(comando),
+        recebido: Boolean(sessao),
+        importado: Boolean(importacao)
+      }, startedAt);
+    }
+
     if (url.pathname === '/api/atividade/encerrar' && req.method === 'POST') {
       // Encerrar não é apagar: mantém as frases, leituras, sessões e pontuações salvas.
       const resultado = await prisma.atividade.updateMany({
