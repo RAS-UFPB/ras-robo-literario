@@ -8,6 +8,17 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
+  <style>html { visibility: hidden; }</style>
+  <script>
+    // Não revela o painel durante a verificação da sessão (a API continua protegida).
+    try {
+      const sessao = JSON.parse(sessionStorage.getItem('robo-literario-admin-temporario') || 'null');
+      if (!sessao || !sessao.token || !(Date.now() < sessao.expiraEm)) {
+        sessionStorage.removeItem('robo-literario-admin-temporario');
+        location.replace('/login.html');
+      }
+    } catch { location.replace('/login.html'); }
+  </script>
 </head>
 <body>
   <nav class="top-nav">
@@ -34,6 +45,7 @@
       <li><a href="#" data-page="contos">Contos e atividades</a></li>
       <li><a href="#" data-page="acervo">Acervo</a></li>
       <li><a href="#wifi" data-page="wifi">Configurar Wi-Fi</a></li>
+      <li><button type="button" id="admin-sair" class="admin-sair" onclick="sairDaAreaAdministrativa()" hidden>Sair</button></li>
     </ul>
   </nav>
 

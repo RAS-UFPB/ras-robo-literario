@@ -2064,3 +2064,19 @@ body.presentation-open {
 .finalizacao-esp-controles { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .65rem; }
 .finalizacao-esp-controles [hidden] { display: none !important; }
 .finalizacao-esp-controles .btn:disabled { opacity: .65; cursor: not-allowed; }
+
+
+/* Saída discreta para quem já entrou na página do professor. */
+.admin-sair {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  border-radius: 999px;
+  font-weight: 800;
+  padding: .5rem .95rem;
+  min-height: 38px;
+  font-size: .92rem;
+}
+.admin-sair:hover { background: var(--accent-soft); color: var(--accent-dark); }
+.admin-sair[hidden] { display: none; }

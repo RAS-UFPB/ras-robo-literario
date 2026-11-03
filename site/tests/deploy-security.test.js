@@ -42,6 +42,11 @@ test('servidor HTTP: arquivos, autenticação, escrita e PDF com dados simulados
     assert.equal(r.status, 200, caminho);
     assert.ok(r.headers.get('content-type').includes(tipo), caminho);
   }
+  const inicioPublico = await requisicao('/');
+  assert.equal(new URL(inicioPublico.url).pathname, '/login.html', 'a raiz deve abrir login');
+  assert.match(await inicioPublico.text(), /Bem-vinda ao Robô Literário!/);
+  assert.equal((await requisicao('/login.css')).status, 200);
+  assert.equal((await requisicao('/login.js')).status, 200);
   assert.equal((await requisicao('/api/contos')).status, 200);
   assert.equal((await requisicao('/api/atividade')).status, 200);
   assert.equal((await requisicao('/api/placar')).status, 200); // atividade sem dados
@@ -60,6 +65,7 @@ test('servidor HTTP: arquivos, autenticação, escrita e PDF com dados simulados
     const r = await requisicao(caminho, { method, headers: json, body: '{}' });
     assert.equal(r.status, 401, `${method} ${caminho} deveria estar protegido`);
   }
+  assert.equal((await requisicao('/api/auth/sessao')).status, 401);
   assert.equal((await requisicao('/api/esp/importacao/status')).status, 401);
   assert.equal((await requisicao('/api/supabase/status')).status, 401);
   const invalido = await requisicao('/api/auth/login', { method: 'POST', headers: json, body: JSON.stringify({ accessKey: 'errada' }) });
@@ -67,9 +73,11 @@ test('servidor HTTP: arquivos, autenticação, escrita e PDF com dados simulados
   const login = await requisicao('/api/auth/login', { method: 'POST', headers: json,
     body: JSON.stringify({ accessKey: 'chave-local-exclusiva-dos-testes' }) });
   assert.equal(login.status, 200);
-  const { token } = await login.json();
+  const { token, expiresInSeconds } = await login.json();
+  assert.equal(expiresInSeconds, 3600);
   assert.ok(token.length >= 48);
   const autorizado = { ...json, Authorization: `Bearer ${token}` };
+  assert.equal((await requisicao('/api/auth/sessao', { headers: autorizado })).status, 200);
 
   const conto = await requisicao('/api/contos', { method: 'POST', headers: autorizado,
     body: JSON.stringify({ titulo: 'Conto para teste', autor: 'Escola' }) });
@@ -114,4 +122,6 @@ test('servidor HTTP: arquivos, autenticação, escrita e PDF com dados simulados
   assert.equal(rejeitado.status, 400);
   const final = await requisicao('/api/atividade/encerrar', { method: 'POST', headers: autorizado, body: '{}' });
   assert.equal(final.status, 200);
+  assert.equal((await requisicao('/api/auth/logout', { method: 'POST', headers: autorizado })).status, 200);
+  assert.equal((await requisicao('/api/auth/sessao', { headers: autorizado })).status, 401);
 });

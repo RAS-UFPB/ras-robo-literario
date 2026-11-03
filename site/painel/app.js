@@ -26,6 +26,40 @@ let narradorTrechos = null;
 let pdfApresentacaoUrl = null;
 let pdfCarregamentoId = 0;
 let tokenAdminPdf = null;
+// Sessão temporária apenas nesta aba: preserva o login ao atualizar a página,
+// mas nunca armazena a chave administrativa nem usa localStorage.
+const ADMIN_SESSION_STORAGE_KEY = 'robo-literario-admin-temporario';
+
+function limparTokenAdmin() {
+  tokenAdminPdf = null;
+  try { window.sessionStorage.removeItem(ADMIN_SESSION_STORAGE_KEY); } catch { /* armazenamento indisponível */ }
+  atualizarIndicadorAdmin();
+}
+
+function recuperarTokenAdmin() {
+  if (tokenAdminPdf) return tokenAdminPdf;
+  try {
+    const salvo = JSON.parse(window.sessionStorage.getItem(ADMIN_SESSION_STORAGE_KEY) || 'null');
+    if (salvo && typeof salvo.token === 'string' && salvo.token && Number.isFinite(salvo.expiraEm)
+        && Date.now() < salvo.expiraEm) {
+      tokenAdminPdf = salvo.token;
+      return tokenAdminPdf;
+    }
+  } catch { /* dados inválidos ou armazenamento indisponível */ }
+  limparTokenAdmin();
+  return null;
+}
+
+function guardarTokenAdmin(token, expiresInSeconds) {
+  tokenAdminPdf = token;
+  // O backend expira o token em 1h; descartamos o cache um pouco antes.
+  const segundos = Number(expiresInSeconds);
+  const duracao = Number.isFinite(segundos) && segundos > 0 ? Math.min(segundos, 3600) : 3600;
+  const expiraEm = Date.now() + Math.max(0, duracao * 1000 - 30000);
+  try { window.sessionStorage.setItem(ADMIN_SESSION_STORAGE_KEY, JSON.stringify({ token, expiraEm })); }
+  catch { /* continua funcionando sem persistir após F5 */ }
+  atualizarIndicadorAdmin();
+}
 
 async function carregarContosDoBanco() {
   const dados = await apiFetch('/api/contos');
@@ -92,11 +126,9 @@ async function apiFetch(url, options = {}) {
     }
     let response = await fetch(url, configuracao);
     if (exigeAdmin && response.status === 401) {
-      // Token temporário perdido após reinício do Render ou depois de 1 hora.
-      tokenAdminPdf = null;
-      const token = await obterTokenAdminPdf();
-      if (!token) return null;
-      response = await fetch(url, { ...configuracao, headers: { ...configuracao.headers, Authorization: `Bearer ${token}` } });
+      // Não repete uma gravação automaticamente: redireciona para novo login.
+      irParaPaginaLogin('expirada');
+      return null;
     }
     const contentType = response.headers.get('content-type') || '';
     const payload = contentType.includes('application/json') ? await response.json() : await response.text();
@@ -674,7 +706,7 @@ async function atualizarStatusFinalizacaoEsp() {
 
 async function finalizarLeituraEsp() {
   if (!atividadeIdParaFinalizacaoEsp || pedidoFinalizacaoEmCurso) return;
-  if (!window.confirm('Finalizar a leitura das cartas no robô? A ESP enviará a sessão completa quando estiver conectada.')) return;
+  if (!window.confirm('Tem certeza que deseja finalizar a leitura? A ESP encerrará a sessão e enviará as cartas lidas quando estiver conectada.')) return;
   const botao = document.getElementById('dashboard-finalizar-leitura');
   const status = document.getElementById('dashboard-status-finalizacao');
   pedidoFinalizacaoEmCurso = true;
@@ -1835,17 +1867,57 @@ function atualizarPdfGerenciador(mensagem = '') {
   if (enviar) { enviar.disabled = !conto; enviar.textContent = conto?.possuiPdf ? 'Substituir PDF' : 'Anexar PDF'; }
 }
 
+function atualizarIndicadorAdmin() {
+  const sair = document.getElementById('admin-sair');
+  if (sair) sair.hidden = !Boolean(tokenAdminPdf);
+}
+
+function irParaPaginaLogin(mensagem = '') {
+  limparTokenAdmin();
+  const destino = mensagem === 'expirada' ? '/login.html?expirada=1' : '/login.html';
+  window.location.replace(destino);
+}
+
+async function inicializarAreaAdministrativa() {
+  // A área pedagógica só é inicializada quando a sessão temporária for válida.
+  // A chave nunca fica no HTML; toda gravação segue protegida pelo backend.
+  const token = recuperarTokenAdmin();
+  if (!token) {
+    irParaPaginaLogin();
+    return false;
+  }
+  try {
+    const resposta = await fetch('/api/auth/sessao', {
+      headers: { Authorization: `Bearer ${token}` }, cache: 'no-store'
+    });
+    if (!resposta.ok) {
+      irParaPaginaLogin('expirada');
+      return false;
+    }
+    atualizarIndicadorAdmin();
+    return true;
+  } catch {
+    // Se o serviço estiver fora do ar, não exibir o painel como autenticado.
+    irParaPaginaLogin();
+    return false;
+  }
+}
+
+async function sairDaAreaAdministrativa() {
+  const token = recuperarTokenAdmin();
+  limparTokenAdmin();
+  try {
+    if (token) await fetch('/api/auth/logout', {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` }
+    });
+  } catch { /* logout local continua válido quando não há conexão */ }
+  window.location.replace('/login.html');
+}
+
 async function obterTokenAdminPdf() {
-  if (tokenAdminPdf) return tokenAdminPdf;
-  const chave = window.prompt('Para alterar atividades, contos ou PDFs, informe a chave administrativa do site:');
-  if (!chave) return null;
-  const resposta = await fetch('/api/auth/login', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accessKey: chave })
-  });
-  const dados = await resposta.json();
-  if (!resposta.ok || !dados.token) throw new Error(dados.error || 'Chave administrativa inválida.');
-  tokenAdminPdf = dados.token; // Apenas em memória; nunca vai para o Storage nem para localStorage.
-  return tokenAdminPdf;
+  const token = recuperarTokenAdmin();
+  if (!token) irParaPaginaLogin('expirada');
+  return token;
 }
 
 async function requisicaoPdfAdmin(contoId, metodo, arquivo) {
@@ -1856,8 +1928,11 @@ async function requisicaoPdfAdmin(contoId, metodo, arquivo) {
     headers: { 'Authorization': `Bearer ${token}`, ...(arquivo ? { 'Content-Type': 'application/pdf' } : {}) },
     ...(arquivo ? { body: arquivo } : {})
   });
-  // Uma sessão administrativa expirada exige novo login na próxima tentativa.
-  if (resposta.status === 401) tokenAdminPdf = null;
+  if (resposta.status === 401) {
+    limparTokenAdmin();
+    irParaPaginaLogin('expirada');
+    return null;
+  }
   const dados = await resposta.json().catch(() => ({}));
   if (!resposta.ok) throw new Error(dados.error || `Erro ${resposta.status} ao atualizar o PDF.`);
   return dados;
@@ -1905,6 +1980,8 @@ window.onload = async () => {
   startClock();
   startConnectionMonitor();
 
+  if (!(await inicializarAreaAdministrativa())) return;
+  document.documentElement.style.visibility = 'visible';
   await carregarContosDoBanco();
   renderizarContos();
 

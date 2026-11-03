@@ -113,6 +113,11 @@ function requireAdmin(req, res, sendJson) {
   return true;
 }
 
+function logoutAdmin(req) {
+  const token = getTokenFromRequest(req);
+  if (token) sessions.delete(token);
+}
+
 function clearExpiredSessions() {
   const now = Date.now();
 
@@ -132,5 +137,6 @@ setInterval(clearExpiredSessions, 10 * 60 * 1000); // limpa tokens vencidos a ca
 
 module.exports = {
   loginAdmin,
-  requireAdmin
+  requireAdmin,
+  logoutAdmin
 };

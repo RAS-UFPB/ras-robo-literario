@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Entrar | Robô Literário</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="login.css">
+  <script src="login.js" defer></script>
+</head>
+<body>
+  <header class="login-topo"><span class="login-marca">LED <span>·</span> Robô Literário</span></header>
+  <main class="login-main">
+    <section class="login-card" aria-labelledby="login-titulo">
+      <div class="login-icone" aria-hidden="true">
+        <svg viewBox="0 0 96 96" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M48 14v11M36 28h24c13 0 21 8 21 21v14c0 13-8 21-21 21H36c-13 0-21-8-21-21V49c0-13 8-21 21-21Z"/>
+          <path d="M33 56h1M62 56h1M36 67c8 6 16 6 24 0M15 52H7M89 52h-8"/>
+          <circle cx="48" cy="13" r="3" fill="currentColor" stroke="none"/>
+        </svg>
+      </div>
+      <span class="login-sobretitulo">Painel pedagógico</span>
+      <h1 id="login-titulo">Bem-vinda ao Robô Literário!</h1>
+      <p class="login-descricao">Entre com a chave de acesso da equipe para preparar atividades e acompanhar as leituras do robô.</p>
+      <form id="login-form">
+        <label for="login-chave">Chave de acesso</label>
+        <div class="login-input-container">
+          <input id="login-chave" name="accessKey" type="password" placeholder="Digite sua chave de acesso" autocomplete="current-password" required autofocus>
+          <button type="button" id="login-visibilidade" class="login-mostrar" aria-label="Mostrar chave de acesso" aria-pressed="false">Mostrar</button>
+        </div>
+        <p id="login-erro" class="login-erro" role="alert" aria-live="polite"></p>
+        <button id="login-entrar" type="submit" class="login-submit">Entrar no painel</button>
+      </form>
+      <p class="login-ajuda">O acesso é temporário e permanece na mesma aba ao atualizar a página. Não precisa digitar a chave a cada atividade.</p>
+    </section>
+  </main>
+  <footer class="login-rodape">Um espaço para histórias, descobertas e aprendizagem.</footer>
+</body>
+</html>

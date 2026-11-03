@@ -6,7 +6,7 @@ const path = require('path');
 const { performance } = require('perf_hooks');
 
 const { sendSwaggerJson, sendSwaggerUi } = require('./swagger');
-const { loginAdmin, requireAdmin } = require('./auth');
+const { loginAdmin, requireAdmin, logoutAdmin } = require('./auth');
 const { prisma } = require('./prisma');
 const { criarSincronizador } = require('./importador-sessoes-esp');
 const { montarAtividadesAcervo } = require('./acervo');
@@ -975,12 +975,22 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { conectado: true, mensagem: 'Supabase conectado com Prisma.' }, startedAt);
     }
 
+    if (url.pathname === '/api/auth/sessao' && req.method === 'GET') {
+      if (!requireAdmin(req, res, sendJson)) return;
+      return sendJson(res, 200, { autenticado: true }, startedAt);
+    }
+
+    if (url.pathname === '/api/auth/logout' && req.method === 'POST') {
+      logoutAdmin(req);
+      return sendJson(res, 200, { mensagem: 'Sessão encerrada.' }, startedAt);
+    }
+
     if (url.pathname === '/api/auth/login' && req.method === 'POST') {
       const body = await parseBody(req);
       const resultado = loginAdmin(body.accessKey, req.socket.remoteAddress);
 
       if (!resultado.ok) return sendJson(res, resultado.status, { error: resultado.error }, startedAt);
-      return sendJson(res, 200, { mensagem: 'Login admin realizado com sucesso.', token: resultado.token }, startedAt);
+      return sendJson(res, 200, { mensagem: 'Login admin realizado com sucesso.', token: resultado.token, expiresInSeconds: resultado.expiresInSeconds }, startedAt);
     }
 
     if (url.pathname === '/api/admin/reset-json' && req.method === 'POST') {
@@ -1006,6 +1016,11 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) return sendJson(res, 404, { error: 'Rota da API não encontrada.' }, startedAt);
 
     if (!['GET', 'HEAD'].includes(req.method)) return sendJson(res, 405, { error: 'Método não permitido.' }, startedAt);
+    // Endereço público abre a tela de login; o painel continua em /index.html.
+    if (url.pathname === '/') {
+      res.writeHead(302, { Location: '/login.html', 'Cache-Control': 'no-store' });
+      return res.end();
+    }
     return serveStatic(req, res);
   } catch (error) {
     if (error.status && error.status >= 400 && error.status < 500) {
