@@ -1,4 +1,11 @@
-node_modules/
-.env
-backend/db.json
-/generated/prisma
+# Proteção em todo o repositório, incluindo esp/ e site/
+**/node_modules/
+**/.env
+**/.env.*
+!**/.env.example
+**/secrets.h
+**/*.log
+**/*.tmp
+.DS_Store
+__pycache__/
+*.pyc

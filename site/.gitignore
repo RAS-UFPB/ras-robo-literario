@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.*
+!.env.example
+backend/db.json
+/generated/prisma
+*.log
+npm-debug.log*
+*.tmp
+.DS_Store
+__pycache__/
+*.pyc

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LED - Robo Literário</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  
+  <nav class="top-nav">
+    <div class="logo">
+      <div class="logo-icon">🤖</div>
+      <div class="logo-text">
+        <strong>LED</strong>
+        <span>Painel do Professor</span>        
+      </div>
+    </div>
+    <ul class="nav-links">
+      <li><a href="#" class="active">Dashboard</a></li>
+      <li><a href="#">Atividades</a></li>
+      <li><a href="#">Relatórios</a></li>
+    </ul>
+  </nav>
+
+  <main class="container">
+    <header>
+      <div>
+        <h1>Visão Geral do Sistema</h1>
+        <p>Resumo das atividades pedagógicas e leitura via QR Code</p>
+      </div>
+
+    </header>
+
+    <div class="dashbooard-grif">
+      <section class="main">
+        <div class="card config-card">
+          <h2 class="card-title">1. Configurar Atividade</h2>
+          <p class="card-desc">Digite a frase que os alunos devem formar com os QR Codes</p>
+
+          <div class="input-group">
+            <input type="text" id="input-nova-frase" placeholder="Ex: o menino maluquinho">
+            <button class="btn btn-orange" onclick="definirNovaFrase()">Iniciar Atividade</button>
+          </div>
+          <div id="status-frase-alvo" class="status-msg">Nenhuma frase definida</div>
+        </div>
+
+        <div class="card">
+          <h2 class="card-title">2. Mesa de Montagem</h2>
+          <p class="card-desc">As palavras lidas pelo robô aparecerão aqui em tempo real</p>
+          <div id="mesa-montagem" class="mesa-de-montagem"></div>
+          <div class="actions">
+            <button class="btn btn-green" onclick="validarSequencia()">Verificar Resposta</button>
+            <button class="btn btn-outline" onclick="reiniciarAtividade()">Limpar Mesa</button>
+          </div>
+          <div id="resultado-validacao" class="resultado-msg">
+            Aguardando leitura dos blocos...
+          </div>
+        </div>
+      </section>
+
+      <aside class="side-content">
+        <div class="card robot-card">
+          <h2 class="card-title" style="border-left: 4px solid var(--accent2); padding-left: 8px;">Status do Robô ESP32</h2>
+
+          <div class="status-box">]
+            <div class="status-header">
+              <span>📡 Conexão WiFi</span>
+              <div class="status-indicator">
+                <span class="status-dot offline" id="conn-dot"></span>
+                <span id="conn-label">Desconectado</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="robot-avatar">
+            <div class="avatar-circle">🤖</div>
+          </div>
+
+          <div class="robot-info">
+            <span class="info-label">Última ação:</span>
+            <strong id="status-robo">Aguardando comandos...</strong>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

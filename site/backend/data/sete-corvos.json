@@ -1,0 +1,144 @@
+{
+  "id": "sete-corvos",
+  "titulo": "Os Sete Corvos",
+  "autor": "Irmãos Grimm",
+  "resumo": "",
+  "perguntas": [
+    {
+      "ordem": 1,
+      "pergunta": "Quantos filhos o homem tinha antes do nascimento da menina?",
+      "resposta": "Sete filhos, todos meninos."
+    },
+    {
+      "ordem": 2,
+      "pergunta": "Por que o pai mandou um dos filhos buscar água na fonte?",
+      "resposta": "Porque a menina havia nascido pequena e fraquinha e precisava ser batizada com urgência."
+    },
+    {
+      "ordem": 3,
+      "pergunta": "O que aconteceu quando o pai desejou que os filhos se transformassem em corvos?",
+      "resposta": "Os sete meninos se transformaram em corvos."
+    },
+    {
+      "ordem": 4,
+      "pergunta": "Por que a menina não sabia que tinha irmãos?",
+      "resposta": "Porque os pais nunca haviam contado a ela sobre os irmãos."
+    },
+    {
+      "ordem": 5,
+      "pergunta": "Por que a menina decidiu sair de casa?",
+      "resposta": "Porque descobriu que tinha irmãos e decidiu encontrá-los e salvá-los."
+    },
+    {
+      "ordem": 6,
+      "pergunta": "Quem ajudou a menina e o que lhe deu?",
+      "resposta": "A Estrela-d'Alva deu à menina um ossinho de frango, necessário para abrir a Montanha de Cristal."
+    },
+    {
+      "ordem": 7,
+      "pergunta": "O que aconteceu quando a menina percebeu que havia perdido o ossinho?",
+      "resposta": "Ela encontrou outra maneira de abrir o portão usando um pedaço do próprio dedo mindinho."
+    },
+    {
+      "ordem": 8,
+      "pergunta": "Como os sete corvos voltaram a ser humanos?",
+      "resposta": "Eles reconheceram o anel dos pais e, quando a menina apareceu, recuperaram imediatamente a forma humana."
+    }
+  ],
+  "desafios": [
+    {
+      "ordem": 1,
+      "texto": "ATENÇÃO, ESCRITORES!\nVAMOS MUDAR A HISTÓRIA?\n\nE SE O PAI FIZESSE OUTRO PEDIDO?\n\nESCREVAM O QUE ACONTECERIA!",
+      "momento": "Após a maldição do pai."
+    },
+    {
+      "ordem": 2,
+      "texto": "CRIEM UM OBJETO MÁGICO!\n\nCOMO ELE AJUDARIA A MENINA?",
+      "momento": "Antes da viagem da menina."
+    },
+    {
+      "ordem": 3,
+      "texto": "CRIEM UM NOVO PERSONAGEM!\n\nELE TEM QUAIS PODERES?\n\nCOMO ELE AJUDARIA A MENINA?",
+      "momento": "Encontro com o Sol, a Lua e as Estrelas."
+    },
+    {
+      "ordem": 4,
+      "texto": "A MENINA PERDEU O OSSO!\n\nCOMO ABRIR A MONTANHA SEM A CHAVE?",
+      "momento": "Perda do ossinho."
+    },
+    {
+      "ordem": 5,
+      "texto": "HORA DO NOVO FINAL!\n\nCOMO TERMINARIA A HISTÓRIA?",
+      "momento": "Antes do reencontro com os irmãos."
+    }
+  ],
+  "dicas": [
+    {
+      "ordem": 1,
+      "texto": "Pense no que o personagem está sentindo.",
+      "trechoLetra": null
+    },
+    {
+      "ordem": 2,
+      "texto": "E se um novo personagem aparecesse neste momento?",
+      "trechoLetra": null
+    },
+    {
+      "ordem": 3,
+      "texto": "Tente surpreender o leitor com uma solução inesperada.",
+      "trechoLetra": null
+    },
+    {
+      "ordem": 4,
+      "texto": "Use detalhes para descrever o cenário.",
+      "trechoLetra": null
+    },
+    {
+      "ordem": 5,
+      "texto": "Como essa decisão mudaria o restante da história?",
+      "trechoLetra": null
+    }
+  ],
+  "trechos": [
+    {
+      "letra": "A",
+      "ordemCorreta": 3,
+      "texto": "A menina descobre que tem sete irmãos e decide procurá-los."
+    },
+    {
+      "letra": "B",
+      "ordemCorreta": 1,
+      "texto": "Os irmãos vão buscar água, mas o cântaro cai na fonte."
+    },
+    {
+      "letra": "C",
+      "ordemCorreta": 2,
+      "texto": "O pai deseja que os filhos se transformem em corvos."
+    },
+    {
+      "letra": "D",
+      "ordemCorreta": 4,
+      "texto": "A Estrela-d’Alva dá um ossinho à menina."
+    },
+    {
+      "letra": "E",
+      "ordemCorreta": 5,
+      "texto": "A menina chega à Montanha de Cristal e percebe que perdeu o ossinho."
+    },
+    {
+      "letra": "F",
+      "ordemCorreta": 6,
+      "texto": "A menina entra na Montanha e procura os irmãos."
+    },
+    {
+      "letra": "G",
+      "ordemCorreta": 7,
+      "texto": "Os corvos retornam para casa."
+    },
+    {
+      "letra": "H",
+      "ordemCorreta": 8,
+      "texto": "Os irmãos recuperam a forma humana e voltam para casa."
+    }
+  ]
+}

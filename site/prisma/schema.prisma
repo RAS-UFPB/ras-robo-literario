@@ -1,0 +1,180 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Atividade {
+  id        Int      @id @default(autoincrement())
+  textoAlvo String   @map("texto_alvo")
+  ativa     Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  frases     Frase[]
+  leituras   Leitura[]
+  pontuacoes Pontuacao[]
+
+  @@map("atividades")
+}
+
+model Frase {
+  id            Int      @id @default(autoincrement())
+  atividadeId   Int      @map("atividade_id")
+  indice        Int
+  codigoBinario String   @map("codigo_binario")
+  texto         String
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  atividade Atividade @relation(fields: [atividadeId], references: [id], onDelete: Cascade)
+  leituras  Leitura[]
+
+  @@unique([atividadeId, indice])
+  @@unique([atividadeId, codigoBinario])
+  @@map("frases")
+}
+
+model Equipe {
+  id        Int      @id @default(autoincrement())
+  nome      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  leituras   Leitura[]
+  pontuacoes Pontuacao[]
+
+  @@map("equipes")
+}
+
+model Leitura {
+  id            Int      @id @default(autoincrement())
+  atividadeId   Int      @map("atividade_id")
+  equipeId      Int      @map("equipe_id")
+  fraseId       Int      @map("frase_id")
+  ordem         Int
+  codigoBinario String   @map("codigo_binario")
+  fragmento     String
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  atividade Atividade @relation(fields: [atividadeId], references: [id], onDelete: Cascade)
+  equipe    Equipe    @relation(fields: [equipeId], references: [id], onDelete: Cascade)
+  frase     Frase     @relation(fields: [fraseId], references: [id], onDelete: Cascade)
+
+  @@map("leituras")
+}
+
+model Pontuacao {
+  id                   Int      @id @default(autoincrement())
+  atividadeId           Int      @map("atividade_id")
+  equipeId              Int      @map("equipe_id")
+  pontuacao             Int      @default(0)
+  corretas              Int      @default(0)
+  total                 Int      @default(0)
+  ultimaPontuacaoRodada Int      @default(0) @map("ultima_pontuacao_rodada")
+  ultimaAssinatura      String?  @map("ultima_assinatura")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  atividade Atividade @relation(fields: [atividadeId], references: [id], onDelete: Cascade)
+  equipe    Equipe    @relation(fields: [equipeId], references: [id], onDelete: Cascade)
+
+  @@unique([atividadeId, equipeId])
+  @@map("pontuacoes")
+}
+
+// Conteúdo pedagógico permanente.
+model Conto {
+  id        String   @id
+  titulo    String
+  autor     String?
+  resumo    String?
+  pdfPath   String?  @map("pdf_path")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  perguntas Pergunta[]
+  desafios  Desafio[]
+  dicas     Dica[]
+
+  @@map("contos")
+}
+
+model Pergunta {
+  id        Int      @id @default(autoincrement())
+  contoId   String   @map("conto_id")
+  ordem     Int
+  pergunta  String
+  resposta  String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  conto Conto @relation(fields: [contoId], references: [id], onDelete: Cascade)
+
+  @@unique([contoId, ordem])
+  @@map("perguntas")
+}
+
+model Desafio {
+  id        Int      @id @default(autoincrement())
+  contoId   String   @map("conto_id")
+  ordem     Int
+  momento   String?
+  texto     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  conto Conto @relation(fields: [contoId], references: [id], onDelete: Cascade)
+
+  @@unique([contoId, ordem])
+  @@map("desafios")
+}
+
+model Dica {
+  id        Int      @id @default(autoincrement())
+  contoId   String   @map("conto_id")
+  trechoId  Int?     @map("trecho_id")
+  ordem     Int
+  texto     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  conto  Conto              @relation(fields: [contoId], references: [id], onDelete: Cascade)
+  trecho TrechoEmbaralhar?  @relation(fields: [trechoId], references: [id], onDelete: SetNull)
+
+  @@unique([contoId, ordem])
+  @@index([trechoId])
+  @@map("dicas")
+}
+
+// Tabela já existente no Supabase. Não é apagada no reset das rodadas.
+model TrechoEmbaralhar {
+  id           Int      @id @default(autoincrement())
+  conto        String
+  letra        String
+  ordemCorreta Int      @map("ordem_correta")
+  texto        String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  dicas Dica[]
+
+  @@map("trechos_embaralhar")
+}
+
+// Caixa de entrada bruta das sessões enviadas diretamente pela ESP32 ao Supabase.
+// Não substitui Leitura: o firmware não conhece atividade_id/frase_id/equipe_id do banco.
+model SessaoEsp {
+  id        BigInt   @id @default(autoincrement())
+  sessaoId  String   @map("sessao_id")
+  rodadas   Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("sessoes_esp")
+}
+
+// Registro de importação idempotente no cenário A (backend apenas).
+model ImportacaoSessaoEsp {
+  sessaoEspId       BigInt   @id @map("sessao_esp_id")
+  sessaoId          String   @unique @map("sessao_id")
+  atividadeId       Int      @map("atividade_id")
+  quantidadeLeituras Int     @map("quantidade_leituras")
+  importadaEm       DateTime @default(now()) @map("importada_em")
+
+  @@index([atividadeId])
+  @@map("importacoes_sessoes_esp")
+}

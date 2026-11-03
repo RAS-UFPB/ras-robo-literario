@@ -1,0 +1,25 @@
+{
+  "name": "robo-literario-ras-mvp",
+  "version": "1.0.0",
+  "description": "Painel do professor para o Robô Literário com PostgreSQL/Supabase e Prisma.",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "seed:conteudo": "node backend/seed-conteudo.js",
+    "verificar:banco": "node backend/diagnosticar-banco.js",
+    "test": "node --test tests/*.test.js",
+    "limpar-testes:previa": "node backend/limpar-atividades-teste.js"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "@supabase/supabase-js": "^2.106.2",
+    "dotenv": "^17.4.2",
+    "pg": "^8.21.0",
+    "prisma": "^7.8.0"
+  },
+  "allowScripts": {
+    "@prisma/engines@7.10.1": true,
+    "prisma@7.10.1": true
+  }
+}

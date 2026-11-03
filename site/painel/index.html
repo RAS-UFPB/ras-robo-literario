@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LED - Robô Literário</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <nav class="top-nav">
+    <a class="logo" href="#" aria-label="Página inicial do painel LED">
+      <span class="logo-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" role="img">
+          <path d="M12 3v2.2" />
+          <path d="M8.2 5.2h7.6a4 4 0 0 1 4 4v5.1a4 4 0 0 1-4 4H8.2a4 4 0 0 1-4-4V9.2a4 4 0 0 1 4-4Z" />
+          <path d="M8.8 11h.1" />
+          <path d="M15.1 11h.1" />
+          <path d="M9.2 14.2c1.7 1 3.9 1 5.6 0" />
+          <path d="M4.2 11H2.6" />
+          <path d="M21.4 11h-1.6" />
+        </svg>
+      </span>
+      <span class="logo-text">
+        <strong>LED</strong>
+        <span>Painel do Professor</span>
+      </span>
+    </a>
+
+    <ul class="nav-links" aria-label="Navegação principal">
+      <li><a href="#" class="active" data-page="dashboard">Dashboard</a></li>
+      <li><a href="#" data-page="contos">Contos e atividades</a></li>
+      <li><a href="#" data-page="acervo">Acervo</a></li>
+      <li><a href="#wifi" data-page="wifi">Configurar Wi-Fi</a></li>
+    </ul>
+  </nav>
+
+  <main class="container">
+    <section id="pagina-dashboard" class="page-section active">
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">Robô Literário</span>
+        <h1>Visão geral do sistema</h1>
+        <p>Resumo das atividades pedagógicas, simulação de leitura e acompanhamento por QR Code.</p>
+      </div>
+      <div class="clock" id="clock" aria-label="Horário atual">--:--:--</div>
+    </header>
+
+    <div class="dashboard-grid">
+      <section class="main-content" aria-label="Painel principal">
+        <div class="card config-card">
+          <div class="section-heading">
+            <span class="step-badge">1</span>
+            <div>
+              <h2 class="card-title">Configurar atividade</h2>
+              <p class="card-desc">Digite o trecho da história que os alunos devem montar. Use <strong>|</strong> para separar cada frase ou parte maior.</p>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <input type="text" id="input-nova-frase" placeholder="Ex: O pequeno príncipe conheceu a raposa | A raposa ensinou ao pequeno príncipe | O encontro virou amizade">
+            <button class="btn btn-primary" onclick="definirNovaFrase()">Iniciar atividade</button>
+          </div>
+          <div class="atividade-conto-atalho">
+            <label for="dashboard-conto-trechos">Ou use os trechos de um conto</label>
+            <div class="atividade-conto-atalho-controles">
+              <select id="dashboard-conto-trechos" class="conto-select" aria-label="Conto para atividade de montagem"></select>
+              <button id="dashboard-iniciar-trechos" class="btn btn-outline" type="button" onclick="iniciarTrechosDoConto()">Iniciar com este conto</button>
+            </div>
+          </div>
+          <div id="status-frase-alvo" class="status-msg">Nenhuma atividade em andamento</div>
+          <button id="dashboard-encerrar-atividade" class="btn btn-outline" type="button" onclick="encerrarAtividadeAtual()" hidden>Encerrar atividade</button>
+          <details id="detalhes-atividade-ativa" class="atividade-blocos-detalhes" hidden>
+            <summary>Consultar blocos e códigos da atividade</summary>
+            <div id="frase-binaria" class="binary-preview" aria-live="polite"></div>
+          </details>
+          <!-- Recolhido por padrão: os QRs ficam disponíveis sem ocupar o dashboard. -->
+          <div id="qr-atividade-area" class="qr-atividade-area" hidden>
+            <div class="qr-atividade-barra">
+              <div>
+                <strong>QR Codes para o robô</strong>
+                <span>Início da atividade e identificação das equipes</span>
+              </div>
+              <button id="qr-atividade-toggle" class="btn btn-outline" type="button"
+                onclick="alternarExibicaoQr()" aria-controls="qr-atividade-conteudo" aria-expanded="false">Mostrar QR Codes</button>
+            </div>
+            <div id="qr-atividade-conteudo" class="qr-atividade-conteudo" hidden>
+              <div class="qr-abas" role="group" aria-label="Tipo de QR Code">
+                <button type="button" id="qr-aba-inicio" class="qr-aba ativa" aria-pressed="true" onclick="selecionarTipoQr('inicio')">Iniciar atividade</button>
+                <button type="button" id="qr-aba-equipe" class="qr-aba" aria-pressed="false" onclick="selecionarTipoQr('equipe')">Identificar equipe</button>
+              </div>
+              <div id="qr-inicio-esp" class="qr-esp-info" hidden>
+                <strong>QR de início desta atividade</strong>
+                <p>Apresente este QR à câmera do robô antes de escolher a equipe.</p>
+                <div id="qr-inicio-esp-visual" class="qr-inicio-visual" role="img" aria-label="QR Code para iniciar a atividade"></div>
+                <p id="qr-inicio-esp-status" class="qr-esp-ajuda" role="status" hidden></p>
+                <button class="btn btn-outline qr-inicio-ampliar" id="qr-inicio-esp-ampliar" type="button" onclick="ampliarQrInicio()">Ampliar QR Code</button>
+                <details class="qr-inicio-detalhes">
+                  <summary>Ver código em texto (opcional)</summary>
+                  <div class="qr-esp-linha"><code id="qr-inicio-esp-texto"></code><button class="btn btn-outline" type="button" onclick="copiarQrInicio()">Copiar</button></div>
+                </details>
+                <p class="qr-esp-ajuda">Depois escolha <strong>Identificar equipe</strong> e mostre as cartas binárias.</p>
+              </div>
+              <div id="qr-equipe-esp" class="qr-esp-info" hidden>
+                <div class="qr-equipe-escolha">
+                  <label for="qr-equipe-seletor">QR da equipe</label>
+                  <select id="qr-equipe-seletor" class="equipe-select" aria-label="Equipe do QR Code" onchange="selecionarEquipeDashboard(this.value)"></select>
+                </div>
+                <p>Mostre este QR à câmera para indicar qual equipe vai montar a sequência.</p>
+                <div id="qr-equipe-esp-visual" class="qr-inicio-visual" role="img" aria-label="QR Code da equipe selecionada"></div>
+                <p id="qr-equipe-esp-status" class="qr-esp-ajuda" role="status" hidden></p>
+                <button type="button" id="qr-equipe-esp-ampliar" class="btn btn-outline qr-inicio-ampliar" onclick="ampliarQrEquipe()">Ampliar QR Code</button>
+                <details class="qr-inicio-detalhes">
+                  <summary>Ver código em texto (opcional)</summary>
+                  <div class="qr-esp-linha"><code id="qr-equipe-esp-texto"></code><button type="button" class="btn btn-outline" onclick="copiarQrEquipe()">Copiar</button></div>
+                </details>
+              </div>
+            </div>
+          </div>
+          <dialog id="qr-inicio-esp-dialog" class="qr-inicio-dialog" aria-label="QR Code ampliado para iniciar atividade">
+            <h2 id="qr-dialog-titulo">Iniciar atividade no robô</h2>
+            <p id="qr-dialog-descricao">Aponte a câmera da ESP32-CAM para este QR Code.</p>
+            <div id="qr-inicio-esp-ampliado" class="qr-inicio-visual"></div>
+            <button type="button" class="btn btn-primary" onclick="fecharQrInicio()">Fechar</button>
+          </dialog>
+        </div>
+
+        <div class="card">
+          <div class="section-heading">
+            <span class="step-badge">2</span>
+            <div>
+              <h2 class="card-title" id="titulo-mesa-equipe">Mesa de montagem - Equipe 1</h2>
+              <p class="card-desc">Os blocos/frases lidos pelo robô aparecerão aqui, na ordem em que foram enviados para a equipe selecionada.</p>
+            </div>
+          </div>
+
+          <div class="mesa-equipe-escolha">
+            <label for="mesa-equipe-seletor">Visualizar mesa da</label>
+            <select id="mesa-equipe-seletor" class="equipe-select" aria-label="Escolher equipe para visualizar mesa de montagem" onchange="selecionarEquipeDashboard(this.value)"></select>
+          </div>
+          <div id="mesa-montagem" class="mesa-de-montagem" aria-live="polite"></div>
+
+          <div class="actions">
+            <button class="btn btn-success" onclick="validarSequencia()">Verificar resposta</button>
+            <button class="btn btn-outline" onclick="limparMesaEquipeAtual()">Limpar mesa da equipe</button>
+          </div>
+
+          <div id="resultado-validacao" class="resultado-msg">Aguardando leitura dos blocos...</div>
+        </div>
+
+        <div class="card demo-card">
+          <div class="section-heading">
+            <span class="step-badge">3</span>
+            <div>
+              <h2 class="card-title">Simular leitura da ESP32-CAM</h2>
+              <p class="card-desc">Envie um código binário como se ele tivesse vindo do QR Code. Exemplo: <strong>0000</strong> = bloco 1, <strong>0001</strong> = bloco 2.</p>
+            </div>
+          </div>
+
+          <div class="input-group demo-inputs">
+            <input type="text" id="input-equipe" value="Equipe 1" placeholder="Nome da equipe">
+            <input type="text" id="input-binario" placeholder="Ex: 0000">
+            <button class="btn btn-success" onclick="simularLeitura()">Enviar leitura</button>
+          </div>
+          <div id="status-simulador" class="status-msg">Aguardando simulação...</div>
+        </div>
+      </section>
+
+      <aside class="side-content" aria-label="Status e placar">
+        <div class="card robot-card">
+          <div class="section-heading compact">
+            <button type="button" class="status-icon wifi-shortcut" onclick="trocarPagina('wifi')" aria-label="Abrir configurações de Wi-Fi" title="Configurar Wi-Fi">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12.5a10 10 0 0 1 14 0" />
+                <path d="M8.4 15.8a5.2 5.2 0 0 1 7.2 0" />
+                <path d="M12 19h.1" />
+              </svg>
+            </button>
+            <div>
+              <h2 class="card-title">Status da integração</h2>
+              <p class="card-desc">Conexão com a API e última leitura. A conexão não confirma que a ESP esteja online.</p>
+            </div>
+          </div>
+
+          <div class="status-box">
+            <div class="status-header">
+              <span>Conexão API</span>
+              <div class="status-indicator">
+                <span class="status-dot offline" id="conn-dot"></span>
+                <span id="conn-label">Desconectado</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="robot-avatar" aria-hidden="true">
+            <svg viewBox="0 0 180 180" role="img">
+              <circle cx="90" cy="90" r="72" class="robot-bg" />
+              <rect x="51" y="58" width="78" height="64" rx="22" class="robot-face" />
+              <path d="M90 43v15" class="robot-line" />
+              <circle cx="90" cy="38" r="5" class="robot-dot" />
+              <circle cx="75" cy="86" r="5" class="robot-eye" />
+              <circle cx="105" cy="86" r="5" class="robot-eye" />
+              <path d="M76 103c8 7 20 7 28 0" class="robot-smile" />
+              <path d="M51 90H37" class="robot-line" />
+              <path d="M143 90h-14" class="robot-line" />
+            </svg>
+          </div>
+
+          <div class="robot-info">
+            <span class="info-label">Última ação</span>
+            <strong id="status-robo">Aguardando comandos...</strong>
+          </div>
+        </div>
+
+        <div class="card score-card">
+          <div class="section-heading compact">
+            <span class="step-badge">4</span>
+            <div>
+              <h2 class="card-title">Pontuação e placar</h2>
+              <p class="card-desc">Resultado calculado pela API: posição certa + duplas em sequência.</p>
+            </div>
+          </div>
+
+          <div id="pontuacao-atual" class="score-number">0</div>
+          <div id="placar" class="placar-lista">Nenhuma equipe avaliada ainda.</div>
+        </div>
+      </aside>
+    </div>
+    </section>
+
+    <section id="pagina-acervo" class="page-section" hidden>
+      <header class="page-header contos-header">
+        <div>
+          <span class="eyebrow">Biblioteca da professora</span>
+          <h1>Acervo</h1>
+          <p>Consulte os contos, atividades e materiais cadastrados para a aula.</p>
+        </div>
+        <div class="contos-header-actions">
+          <button class="btn btn-primary" type="button" id="acervo-apresentar">Apresentar trechos</button>
+        </div>
+      </header>
+
+      <div class="acervo-layout">
+        <section class="card acervo-filtros" aria-label="Seleção do acervo">
+          <label for="acervo-conto">Conto</label>
+          <select id="acervo-conto" class="conto-select"></select>
+          <label for="acervo-atividade">Atividade preparada</label>
+          <select id="acervo-atividade" class="conto-select"></select>
+          <p id="acervo-vinculo" class="acervo-nota" aria-live="polite"></p>
+          <p id="acervo-carregamento" class="acervo-nota" role="status" hidden></p>
+        </section>
+
+        <div class="acervo-detalhes">
+          <article class="card acervo-resumo">
+            <span class="conto-label">Conto selecionado</span>
+            <h2 id="acervo-titulo"></h2>
+            <p id="acervo-autor" class="acervo-nota"></p>
+            <p id="acervo-resumo-texto"></p>
+            <p id="acervo-pdf-status" class="acervo-nota"></p>
+          </article>
+
+          <section class="card acervo-conteudo" id="acervo-blocos-secao" aria-labelledby="acervo-atividade-titulo" hidden>
+            <h2 id="acervo-atividade-titulo" class="card-title">Blocos da atividade selecionada</h2>
+            <div id="acervo-blocos-atividade" class="acervo-lista"></div>
+          </section>
+
+          <section class="card acervo-conteudo" aria-labelledby="acervo-trechos-titulo">
+            <h2 id="acervo-trechos-titulo" class="card-title">Trechos do conto</h2>
+            <div id="acervo-trechos" class="acervo-lista"></div>
+          </section>
+
+          <section class="card acervo-conteudo" aria-labelledby="acervo-perguntas-titulo">
+            <h2 id="acervo-perguntas-titulo" class="card-title">Perguntas e respostas esperadas</h2>
+            <div id="acervo-perguntas" class="acervo-lista"></div>
+          </section>
+
+          <div class="acervo-duas-colunas">
+            <section class="card acervo-conteudo" aria-labelledby="acervo-dicas-titulo">
+              <h2 id="acervo-dicas-titulo" class="card-title">Dicas</h2>
+              <div id="acervo-dicas" class="acervo-lista"></div>
+            </section>
+            <section class="card acervo-conteudo" aria-labelledby="acervo-desafios-titulo">
+              <h2 id="acervo-desafios-titulo" class="card-title">Desafios</h2>
+              <div id="acervo-desafios" class="acervo-lista"></div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pagina-contos" class="page-section" hidden>
+      <header class="page-header contos-header">
+        <div>
+          <span class="eyebrow">Leitura e intervenção</span>
+          <h1>Contos e atividades</h1>
+          <p>Conduza a leitura, as perguntas, os desafios e as dicas do conto.</p>
+        </div>
+
+        <div class="contos-header-actions">
+          <button class="btn btn-outline" type="button" onclick="abrirGerenciadorConteudo()">Gerenciar conteúdo</button>
+          <button class="btn btn-primary" type="button" onclick="abrirApresentacao()">Apresentar pergunta no quadro</button>
+        </div>
+      </header>
+
+      <div class="contos-workspace">
+        <section class="card conto-toolbar" aria-label="Seleção do conto">
+          <div class="conto-select-group">
+            <label for="conto-select">Conto</label>
+            <select id="conto-select" class="conto-select" onchange="selecionarConto(this.value)"></select>
+          </div>
+
+          <div class="conto-toolbar-meta">
+            <div>
+              <span>Autor</span>
+              <strong id="conto-autor">Autor não informado</strong>
+            </div>
+            <div>
+              <span>Perguntas</span>
+              <strong id="pergunta-indicador">Nenhuma pergunta cadastrada</strong>
+            </div>
+          </div>
+        </section>
+
+        <article class="card leitura-card">
+          <span class="conto-label">Conto selecionado</span>
+          <h2 id="conto-titulo">Os Sete Corvos</h2>
+          <p id="conto-resumo" class="conto-resumo"></p>
+        </article>
+
+        <section class="card pergunta-card">
+          <span class="conto-label">Pergunta para os alunos</span>
+          <div id="conto-pergunta" class="pergunta-destaque"></div>
+
+          <div id="resposta-esperada" class="resposta-esperada" hidden>
+            <span class="tipo-inline tipo-resposta">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/>
+                <circle cx="12" cy="12" r="2.5"/>
+              </svg>
+              Resposta esperada
+            </span>
+            <p id="resposta-texto"></p>
+          </div>
+
+          <div class="contos-actions">
+            <div class="contos-actions-left">
+              <button class="btn btn-outline" type="button" onclick="perguntaAnterior()">Anterior</button>
+              <button class="btn btn-outline" id="btn-resposta" type="button" onclick="alternarResposta()">Mostrar resposta esperada</button>
+            </div>
+            <button class="btn btn-primary" type="button" onclick="proximaPergunta()">Próxima pergunta</button>
+          </div>
+        </section>
+
+        <section class="card atividade-conto-card desafio-card">
+          <div class="atividade-conto-header">
+            <div class="tipo-cabecalho tipo-desafio">
+              <span class="tipo-icone" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="m12 3 1.5 4.2L18 9l-4.5 1.8L12 15l-1.5-4.2L6 9l4.5-1.8L12 3Z"/>
+                  <path d="m19 14 .8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14Z"/>
+                </svg>
+              </span>
+              <div>
+                <span class="conto-label">Desafio de escrita</span>
+                <h2>Missões</h2>
+              </div>
+            </div>
+            <button id="btn-proximo-desafio" class="btn btn-primary" type="button" onclick="mostrarProximoDesafio()">Iniciar desafio</button>
+          </div>
+
+          <div id="desafio-conteudo" class="desafio-conteudo" hidden>
+            <span id="desafio-indicador"></span>
+            <small id="desafio-momento" class="desafio-momento"></small>
+            <p id="desafio-texto"></p>
+          </div>
+        </section>
+
+        <section class="card atividade-conto-card dica-card">
+          <div class="atividade-conto-header">
+            <div class="tipo-cabecalho tipo-dica">
+              <span class="tipo-icone" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M9 18h6"/>
+                  <path d="M10 22h4"/>
+                  <path d="M8.3 14.7A7 7 0 1 1 15.7 14.7C14.7 15.5 14 16.5 14 18h-4c0-1.5-.7-2.5-1.7-3.3Z"/>
+                </svg>
+              </span>
+              <div>
+                <span class="conto-label">Ajuda durante a escrita</span>
+                <h2>Dicas</h2>
+              </div>
+            </div>
+            <button id="btn-proxima-dica" class="btn btn-outline" type="button" onclick="mostrarProximaDica()">Preciso de uma dica</button>
+          </div>
+
+          <div id="dica-conteudo" class="dica-conteudo" hidden>
+            <span id="dica-indicador"></span>
+            <p id="dica-texto"></p>
+          </div>
+        </section>
+
+
+      </div>
+
+      <section id="presentation-stage" class="presentation-stage" hidden aria-hidden="true">
+        <header class="presentation-header">
+          <div class="presentation-heading">
+            <span id="presentation-kicker">Pergunta</span>
+            <strong id="presentation-title">Os Sete Corvos</strong>
+            <span id="presentation-author">Irmãos Grimm</span>
+          </div>
+
+          <div class="presentation-header-actions">
+            <div class="presentation-pdf-modos" role="group" aria-label="Visualização do conto">
+              <button type="button" id="presentation-modo-pergunta" onclick="selecionarVisualizacaoApresentacao('pergunta')">Pergunta</button>
+              <button type="button" id="presentation-modo-pdf" onclick="selecionarVisualizacaoApresentacao('pdf')">Texto do conto</button>
+            </div>
+            <div class="presentation-tools" aria-label="Ferramentas da apresentação">
+              <button class="presentation-tool-button presentation-tool-dica" type="button" title="Mostrar dica" aria-label="Mostrar dica" onclick="mostrarDicaApresentacao()">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9 18h6"/>
+                  <path d="M10 22h4"/>
+                  <path d="M8.3 14.7A7 7 0 1 1 15.7 14.7C14.7 15.5 14 16.5 14 18h-4c0-1.5-.7-2.5-1.7-3.3Z"/>
+                </svg>
+                <span>Dica</span>
+              </button>
+
+              <button class="presentation-tool-button presentation-tool-desafio" type="button" title="Mostrar desafio" aria-label="Mostrar desafio" onclick="mostrarDesafioApresentacao()">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m12 3 1.5 4.2L18 9l-4.5 1.8L12 15l-1.5-4.2L6 9l4.5-1.8L12 3Z"/>
+                  <path d="m19 14 .8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14Z"/>
+                </svg>
+                <span>Desafio</span>
+              </button>
+
+              <button class="presentation-tool-button presentation-tool-resposta" type="button" title="Mostrar resposta esperada" aria-label="Mostrar resposta esperada" onclick="mostrarRespostaApresentacao()">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/>
+                  <circle cx="12" cy="12" r="2.5"/>
+                </svg>
+                <span>Resposta</span>
+              </button>
+              <button class="presentation-tool-button presentation-tool-trechos" type="button" id="presentation-modo-trechos" title="Mostrar trechos e narração" aria-label="Mostrar trechos e narração" onclick="alternarModoApresentacao()">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 10h16M4 15h10M4 20h10"/></svg>
+                <span>Trechos</span>
+              </button>
+            </div>
+
+            <button class="presentation-exit" type="button" onclick="fecharApresentacao()">Sair da apresentação</button>
+          </div>
+        </header>
+
+        <main id="presentation-content" class="presentation-content">
+          <section id="presentation-question" class="presentation-question">
+            <span id="presentation-progress">Pergunta 1 de 1</span>
+            <h2 id="presentation-pergunta"></h2>
+          </section>
+          <section id="presentation-trechos" class="presentation-question presentation-trechos" hidden aria-label="Leitura dos trechos">
+            <div class="presentation-trecho-topo">
+              <label for="presentation-trecho-select">Trecho selecionado</label>
+              <select id="presentation-trecho-select" class="conto-select" onchange="selecionarTrechoApresentacao(this.value)"></select>
+            </div>
+            <p id="presentation-trecho-texto" class="presentation-trecho-texto"></p>
+            <div class="narracao-controls" aria-label="Controles da narração">
+              <div class="narracao-botoes">
+                <button type="button" id="narracao-reproduzir" class="btn btn-primary" onclick="reproduzirTrecho()">▶ Ouvir</button>
+                <button type="button" id="narracao-pausar" class="btn btn-outline" onclick="pausarOuContinuarNarracao()">⏸ Pausar</button>
+                <button type="button" id="narracao-parar" class="btn btn-outline" onclick="pararNarracao()">■ Parar</button>
+              </div>
+              <div class="narracao-opcoes">
+                <label for="narracao-voz">Voz <select id="narracao-voz" onchange="alterarVozNarracao(this.value)"></select></label>
+                <label for="narracao-velocidade">Velocidade <select id="narracao-velocidade" onchange="alterarVelocidadeNarracao(this.value)">
+                  <option value="0.75">0,75×</option><option value="1" selected>1×</option><option value="1.25">1,25×</option><option value="1.5">1,5×</option>
+                </select></label>
+              </div>
+              <p id="narracao-status" role="status" aria-live="polite" class="acervo-nota">Selecione um trecho para ouvir.</p>
+            </div>
+          </section>
+          <section id="presentation-pdf" class="presentation-pdf" hidden aria-label="Texto completo do conto">
+            <iframe id="presentation-pdf-frame" title="PDF original do conto" loading="eager"></iframe>
+            <p id="presentation-pdf-aviso" class="presentation-pdf-aviso" role="status" hidden></p>
+          </section>
+        </main>
+
+        <div id="presentation-intervention-layer" class="presentation-intervention-layer" hidden>
+          <section id="presentation-intervention" class="presentation-intervention-card" role="dialog" aria-modal="true" aria-labelledby="presentation-intervention-label">
+            <div class="presentation-intervention-top">
+              <div class="presentation-intervention-type">
+                <span class="presentation-intervention-icon" aria-hidden="true">
+                  <svg class="icon-dica" viewBox="0 0 24 24">
+                    <path d="M9 18h6"/>
+                    <path d="M10 22h4"/>
+                    <path d="M8.3 14.7A7 7 0 1 1 15.7 14.7C14.7 15.5 14 16.5 14 18h-4c0-1.5-.7-2.5-1.7-3.3Z"/>
+                  </svg>
+                  <svg class="icon-desafio" viewBox="0 0 24 24">
+                    <path d="m12 3 1.5 4.2L18 9l-4.5 1.8L12 15l-1.5-4.2L6 9l4.5-1.8L12 3Z"/>
+                    <path d="m19 14 .8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14Z"/>
+                  </svg>
+                  <svg class="icon-resposta" viewBox="0 0 24 24">
+                    <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/>
+                    <circle cx="12" cy="12" r="2.5"/>
+                  </svg>
+                </span>
+                <span id="presentation-intervention-label" class="presentation-intervention-label"></span>
+              </div>
+
+              <button class="presentation-intervention-close" type="button" aria-label="Fechar" onclick="fecharIntervencaoApresentacao()">×</button>
+            </div>
+
+            <div id="presentation-intervention-context" class="presentation-intervention-context"></div>
+            <p id="presentation-intervention-text" class="presentation-intervention-text"></p>
+
+            <button id="presentation-intervention-next" class="presentation-intervention-next" type="button" hidden></button>
+          </section>
+        </div>
+
+        <footer id="presentation-controls" class="presentation-controls">
+          <button type="button" onclick="perguntaAnterior()">← Anterior</button>
+          <span>Use as setas do teclado para navegar</span>
+          <button type="button" onclick="proximaPergunta()">Próxima →</button>
+        </footer>
+      </section>
+
+      <dialog id="conteudo-dialog" class="conteudo-dialog">
+        <div class="dialog-shell">
+          <header class="dialog-header">
+            <div>
+              <span class="eyebrow">Conteúdo da professora</span>
+              <h2>Gerenciar contos e perguntas</h2>
+              <p>As perguntas e respostas ficam salvas no banco de dados.</p>
+            </div>
+            <button class="dialog-close" type="button" aria-label="Fechar" onclick="fecharGerenciadorConteudo()">×</button>
+          </header>
+
+          <div class="gerenciamento-grid">
+            <form class="gerenciamento-card" onsubmit="adicionarConto(event)">
+              <div class="gerenciamento-heading">
+                <span class="step-badge">1</span>
+                <div>
+                  <h3>Novo conto</h3>
+                  <p>Crie um novo conto para cadastrar perguntas.</p>
+                </div>
+              </div>
+
+              <label>
+                Título do conto
+                <input id="novo-conto-titulo" type="text" required placeholder="Ex: Os Sete Corvos">
+              </label>
+              <label>
+                Autor
+                <input id="novo-conto-autor" type="text" placeholder="Ex: Irmãos Grimm">
+              </label>
+              <label>
+                Resumo curto
+                <textarea id="novo-conto-resumo" rows="3" placeholder="Uma breve descrição para a professora."></textarea>
+              </label>
+              <button class="btn btn-primary" type="submit">Adicionar conto</button>
+            </form>
+
+            <form class="gerenciamento-card" onsubmit="salvarPerguntaGerenciada(event)">
+              <div class="gerenciamento-heading">
+                <span class="step-badge">2</span>
+                <div>
+                  <h3>Pergunta e resposta esperada</h3>
+                  <p>Cadastre apenas a pergunta e a resposta esperada.</p>
+                </div>
+              </div>
+
+              <label>
+                Conto
+                <select id="gerenciar-conto-select" onchange="cancelarEdicaoPergunta(); renderizarPerguntasGerenciador(); atualizarPdfGerenciador()"></select>
+              </label>
+              <label>
+                Pergunta
+                <textarea id="gerenciar-pergunta" rows="3" required placeholder="Digite a pergunta que será feita aos alunos."></textarea>
+              </label>
+              <label>
+                Resposta esperada
+                <textarea id="gerenciar-resposta" rows="3" placeholder="Visível somente quando a professora clicar para mostrar."></textarea>
+              </label>
+
+              <input id="gerenciar-edicao-index" type="hidden" value="">
+
+              <div class="gerenciamento-actions">
+                <button id="btn-cancelar-edicao" class="btn btn-outline" type="button" onclick="cancelarEdicaoPergunta()" hidden>Cancelar edição</button>
+                <button id="btn-salvar-pergunta" class="btn btn-primary" type="submit">Adicionar pergunta</button>
+              </div>
+            </form>
+          </div>
+
+          <section class="gerenciamento-card pdf-gerenciamento" aria-label="PDF do conto">
+            <div class="gerenciamento-heading">
+              <div>
+                <h3>PDF do conto</h3>
+                <p>Vinculado ao conto selecionado acima. Arquivo privado no Supabase.</p>
+              </div>
+            </div>
+            <p id="gerenciar-pdf-estado" class="acervo-nota" role="status">Selecione um conto.</p>
+            <div class="pdf-gerenciamento-acoes">
+              <input id="gerenciar-pdf-arquivo" type="file" accept=".pdf,application/pdf" aria-label="Escolher PDF (até 10 MB)">
+              <button class="btn btn-primary" id="gerenciar-pdf-enviar" type="button" onclick="enviarPdfGerenciador()">Anexar PDF</button>
+              <button class="btn btn-outline" id="gerenciar-pdf-remover" type="button" onclick="removerPdfGerenciador()" hidden>Remover PDF</button>
+            </div>
+          </section>
+
+          <section class="perguntas-cadastradas">
+            <div class="perguntas-lista-header">
+              <div>
+                <h3>Perguntas cadastradas</h3>
+                <p>Edite ou exclua perguntas salvas no banco.</p>
+              </div>
+              <span id="gerenciar-total-perguntas">0 perguntas</span>
+            </div>
+            <div id="gerenciar-lista-perguntas" class="gerenciar-lista-perguntas"></div>
+          </section>
+
+          <p class="storage-note">Desafios, dicas e trechos do conto também ficam salvos no banco e são carregados junto com o conto.</p>
+        </div>
+      </dialog>
+    </section>
+
+    <section id="pagina-wifi" class="page-section" hidden>
+      <header class="page-header wifi-page-header">
+        <div>
+          <span class="eyebrow">Configuração do robô</span>
+          <h1>Configurar Wi-Fi</h1>
+          <p>Gere um QR Code da rede para conectar a ESP32-CAM à internet.</p>
+        </div>
+        <button type="button" class="btn btn-outline" onclick="trocarPagina('dashboard')">Voltar ao dashboard</button>
+      </header>
+      <div class="wifi-page-conteudo">
+        <!-- QR gerado localmente no navegador; credenciais não são enviadas ao servidor. -->
+        <div class="card wifi-card" id="configuracao-wifi-esp">
+          <div class="section-heading compact">
+            <span class="status-icon" aria-hidden="true">🌐</span>
+            <div>
+              <h2 class="card-title">Wi-Fi / Configuração</h2>
+              <p class="card-desc">Configure a rede por QR Code, sem regravar o robô.</p>
+            </div>
+          </div>
+          <p class="wifi-orientacao"></p>
+          <label for="wifi-tipo" class="wifi-modo-label">O que você quer fazer?</label>
+          <select id="wifi-tipo" class="wifi-modo-select" aria-label="Tipo de configuração Wi-Fi">
+            <option value="primeiro">Configurar pela primeira vez</option>
+            <option value="trocar">Trocar de rede / escola</option>
+          </select>
+          <p id="wifi-etapa-orientacao" class="wifi-orientacao">1. Ligue a ESP sem Wi-Fi cadastrado. 2. Crie um PIN (guarde-o!) e mostre o QR da rede à câmera em até 3 minutos.</p>
+          <form id="wifi-config-form" class="wifi-form" autocomplete="off" novalidate onsubmit="return false;">
+            <label for="wifi-pin">PIN de proteção (8 a 12 números)</label>
+            <input id="wifi-pin" type="password" inputmode="numeric" minlength="8" maxlength="12" placeholder="Crie ou informe o PIN" autocomplete="off" required>
+            <button type="button" id="wifi-gerar-autorizacao" class="btn btn-outline" hidden>Gerar QR de autorização</button>
+            <label for="wifi-ssid">Nome da rede (SSID)</label>
+            <input id="wifi-ssid" type="text" maxlength="32" placeholder="Wi-Fi da escola" autocomplete="off" required>
+            <label for="wifi-senha">Senha da rede</label>
+            <input id="wifi-senha" type="password" placeholder="Senha Wi-Fi (ou vazio se aberta)" autocomplete="off">
+            <button type="submit" class="btn btn-primary">Gerar QR do Wi-Fi</button>
+          </form>
+          <div id="wifi-config-resultado" class="wifi-config-resultado" hidden>
+            <div id="wifi-qr-area" class="wifi-qr-area" hidden></div>
+            <p class="card-desc">QR confidencial: não fotografe nem compartilhe a tela. Some automaticamente em 90 segundos.</p>
+            <button id="wifi-apagar-qr" class="btn btn-outline" type="button">Ocultar QR</button>
+          </div>
+          <p id="wifi-config-status" class="status-msg" aria-live="polite"></p>
+          <p class="wifi-orientacao">Quando a conexão for salva: <strong>2 bipes/piscadas</strong>. Em caso de falha: <strong>3 bipes/piscadas</strong>; a rede anterior é mantida.</p>
+          <p class="wifi-aviso">Estado do dispositivo: <strong>não verificado pelo painel</strong> (API online ≠ ESP online).</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="qr-local.js"></script>
+  <script src="wifi-config.js"></script>
+  <script src="narracao.js"></script>
+  <script src="app.js"></script>
+  <script src="acervo.js"></script>
+</body>
+</html>
